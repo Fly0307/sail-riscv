@@ -30,7 +30,7 @@
  *   mem_write_value_priv - uses a default value for metadata
  *   mem_write_value      - both of the above partial applications
  *
- * The internal implementation first performs a SMPU check (if SMPU is
+ * The internal implementation first performs a SPMP check (if SPMP is
  * enabled), and then performs a PMP check (if PMP is enabled), 
  * finally dispatches to MMIO regions or physical memory as
  * per the platform memory map.
@@ -131,14 +131,14 @@ function checked_mem_read forall 'n, 0 < 'n <= max_mem_access . (
     }
   }
 
-/* SMPU checks if enabled. SMPU checks are performed before PMP if enabled. */
-function smpu_mem_read forall 'n, 0 < 'n <= max_mem_access . (t : AccessType(ext_access_type), p : Privilege, paddr : xlenbits, width : atom('n), aq : bool, rl : bool, res: bool, meta : bool) -> MemoryOpResult((bits(8 * 'n), mem_meta)) =
-  if   ((~ (plat_enable_pmp())) & (~ (plat_enable_smpu())))
+/* SPMP checks if enabled. SPMP checks are performed before PMP if enabled. */
+function spmp_mem_read forall 'n, 0 < 'n <= max_mem_access . (t : AccessType(ext_access_type), p : Privilege, paddr : xlenbits, width : atom('n), aq : bool, rl : bool, res: bool, meta : bool) -> MemoryOpResult((bits(8 * 'n), mem_meta)) =
+  if   ((~ (plat_enable_pmp())) & (~ (plat_enable_spmp())))
   then checked_mem_read(t, paddr, width, aq, rl, res, meta)
   else {
-    if (plat_enable_smpu())
+    if (plat_enable_spmp())
     then {
-      match smpuCheck(paddr, width, t, p) {
+      match spmpCheck(paddr, width, t, p) {
         None()  => pmp_mem_read(t, p, paddr, width, aq, rl, res, meta),
         Some(e) => MemException(e)
       }

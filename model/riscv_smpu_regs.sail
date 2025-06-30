@@ -1,10 +1,10 @@
-/* SMPU configuration entries */
+/* SPMP configuration entries */
 
 /* Reuse PmpAddrMatchType */
 // enum PmpAddrMatchType = {OFF, TOR, NA4, NAPOT}
 
-val smpuAddrMatchType_of_bits : bits(2) -> PmpAddrMatchType
-function smpuAddrMatchType_of_bits(bs) = {
+val spmpAddrMatchType_of_bits : bits(2) -> PmpAddrMatchType
+function spmpAddrMatchType_of_bits(bs) = {
   match bs {
     0b00 => OFF,
     0b01 => TOR,
@@ -13,8 +13,8 @@ function smpuAddrMatchType_of_bits(bs) = {
   }
 }
 
-val smpuAddrMatchType_to_bits : PmpAddrMatchType -> bits(2)
-function smpuAddrMatchType_to_bits(bs) = {
+val spmpAddrMatchType_to_bits : PmpAddrMatchType -> bits(2)
+function spmpAddrMatchType_to_bits(bs) = {
   match bs {
     OFF   => 0b00,
     TOR   => 0b01,
@@ -23,7 +23,7 @@ function smpuAddrMatchType_to_bits(bs) = {
   }
 }
 
-bitfield Smpucfg_ent : bits(8) = {
+bitfield Spmpcfg_ent : bits(8) = {
   S : 7,        /* S-mode */
   A : 4 .. 3,   /* address match type, encoded as above */
 
@@ -33,343 +33,343 @@ bitfield Smpucfg_ent : bits(8) = {
   R : 0         /* read */
 }
 
-register smpu0cfg  : Smpucfg_ent
-register smpu1cfg  : Smpucfg_ent
-register smpu2cfg  : Smpucfg_ent
-register smpu3cfg  : Smpucfg_ent
-register smpu4cfg  : Smpucfg_ent
-register smpu5cfg  : Smpucfg_ent
-register smpu6cfg  : Smpucfg_ent
-register smpu7cfg  : Smpucfg_ent
-register smpu8cfg  : Smpucfg_ent
-register smpu9cfg  : Smpucfg_ent
-register smpu10cfg : Smpucfg_ent
-register smpu11cfg : Smpucfg_ent
-register smpu12cfg : Smpucfg_ent
-register smpu13cfg : Smpucfg_ent
-register smpu14cfg : Smpucfg_ent
-register smpu15cfg : Smpucfg_ent
-register smpu16cfg : Smpucfg_ent
-register smpu17cfg : Smpucfg_ent
-register smpu18cfg : Smpucfg_ent
-register smpu19cfg : Smpucfg_ent
-register smpu20cfg : Smpucfg_ent
-register smpu21cfg : Smpucfg_ent
-register smpu22cfg : Smpucfg_ent
-register smpu23cfg : Smpucfg_ent
-register smpu24cfg : Smpucfg_ent
-register smpu25cfg : Smpucfg_ent
-register smpu26cfg : Smpucfg_ent
-register smpu27cfg : Smpucfg_ent
-register smpu28cfg : Smpucfg_ent
-register smpu29cfg : Smpucfg_ent
-register smpu30cfg : Smpucfg_ent
-register smpu31cfg : Smpucfg_ent
-register smpu32cfg : Smpucfg_ent
-register smpu33cfg : Smpucfg_ent
-register smpu34cfg : Smpucfg_ent
-register smpu35cfg : Smpucfg_ent
-register smpu36cfg : Smpucfg_ent
-register smpu37cfg : Smpucfg_ent
-register smpu38cfg : Smpucfg_ent
-register smpu39cfg : Smpucfg_ent
-register smpu40cfg : Smpucfg_ent
-register smpu41cfg : Smpucfg_ent
-register smpu42cfg : Smpucfg_ent
-register smpu43cfg : Smpucfg_ent
-register smpu44cfg : Smpucfg_ent
-register smpu45cfg : Smpucfg_ent
-register smpu46cfg : Smpucfg_ent
-register smpu47cfg : Smpucfg_ent
-register smpu48cfg : Smpucfg_ent
-register smpu49cfg : Smpucfg_ent
-register smpu50cfg : Smpucfg_ent
-register smpu51cfg : Smpucfg_ent
-register smpu52cfg : Smpucfg_ent
-register smpu53cfg : Smpucfg_ent
-register smpu54cfg : Smpucfg_ent
-register smpu55cfg : Smpucfg_ent
-register smpu56cfg : Smpucfg_ent
-register smpu57cfg : Smpucfg_ent
-register smpu58cfg : Smpucfg_ent
-register smpu59cfg : Smpucfg_ent
-register smpu60cfg : Smpucfg_ent
-register smpu61cfg : Smpucfg_ent
-register smpu62cfg : Smpucfg_ent
-register smpu63cfg : Smpucfg_ent
+register spmp0cfg  : Spmpcfg_ent
+register spmp1cfg  : Spmpcfg_ent
+register spmp2cfg  : Spmpcfg_ent
+register spmp3cfg  : Spmpcfg_ent
+register spmp4cfg  : Spmpcfg_ent
+register spmp5cfg  : Spmpcfg_ent
+register spmp6cfg  : Spmpcfg_ent
+register spmp7cfg  : Spmpcfg_ent
+register spmp8cfg  : Spmpcfg_ent
+register spmp9cfg  : Spmpcfg_ent
+register spmp10cfg : Spmpcfg_ent
+register spmp11cfg : Spmpcfg_ent
+register spmp12cfg : Spmpcfg_ent
+register spmp13cfg : Spmpcfg_ent
+register spmp14cfg : Spmpcfg_ent
+register spmp15cfg : Spmpcfg_ent
+register spmp16cfg : Spmpcfg_ent
+register spmp17cfg : Spmpcfg_ent
+register spmp18cfg : Spmpcfg_ent
+register spmp19cfg : Spmpcfg_ent
+register spmp20cfg : Spmpcfg_ent
+register spmp21cfg : Spmpcfg_ent
+register spmp22cfg : Spmpcfg_ent
+register spmp23cfg : Spmpcfg_ent
+register spmp24cfg : Spmpcfg_ent
+register spmp25cfg : Spmpcfg_ent
+register spmp26cfg : Spmpcfg_ent
+register spmp27cfg : Spmpcfg_ent
+register spmp28cfg : Spmpcfg_ent
+register spmp29cfg : Spmpcfg_ent
+register spmp30cfg : Spmpcfg_ent
+register spmp31cfg : Spmpcfg_ent
+register spmp32cfg : Spmpcfg_ent
+register spmp33cfg : Spmpcfg_ent
+register spmp34cfg : Spmpcfg_ent
+register spmp35cfg : Spmpcfg_ent
+register spmp36cfg : Spmpcfg_ent
+register spmp37cfg : Spmpcfg_ent
+register spmp38cfg : Spmpcfg_ent
+register spmp39cfg : Spmpcfg_ent
+register spmp40cfg : Spmpcfg_ent
+register spmp41cfg : Spmpcfg_ent
+register spmp42cfg : Spmpcfg_ent
+register spmp43cfg : Spmpcfg_ent
+register spmp44cfg : Spmpcfg_ent
+register spmp45cfg : Spmpcfg_ent
+register spmp46cfg : Spmpcfg_ent
+register spmp47cfg : Spmpcfg_ent
+register spmp48cfg : Spmpcfg_ent
+register spmp49cfg : Spmpcfg_ent
+register spmp50cfg : Spmpcfg_ent
+register spmp51cfg : Spmpcfg_ent
+register spmp52cfg : Spmpcfg_ent
+register spmp53cfg : Spmpcfg_ent
+register spmp54cfg : Spmpcfg_ent
+register spmp55cfg : Spmpcfg_ent
+register spmp56cfg : Spmpcfg_ent
+register spmp57cfg : Spmpcfg_ent
+register spmp58cfg : Spmpcfg_ent
+register spmp59cfg : Spmpcfg_ent
+register spmp60cfg : Spmpcfg_ent
+register spmp61cfg : Spmpcfg_ent
+register spmp62cfg : Spmpcfg_ent
+register spmp63cfg : Spmpcfg_ent
 
-/* SMPU address configuration */
+/* SPMP address configuration */
 
-register smpuaddr0  : xlenbits
-register smpuaddr1  : xlenbits
-register smpuaddr2  : xlenbits
-register smpuaddr3  : xlenbits
-register smpuaddr4  : xlenbits
-register smpuaddr5  : xlenbits
-register smpuaddr6  : xlenbits
-register smpuaddr7  : xlenbits
-register smpuaddr8  : xlenbits
-register smpuaddr9  : xlenbits
-register smpuaddr10 : xlenbits
-register smpuaddr11 : xlenbits
-register smpuaddr12 : xlenbits
-register smpuaddr13 : xlenbits
-register smpuaddr14 : xlenbits
-register smpuaddr15 : xlenbits
-register smpuaddr16 : xlenbits
-register smpuaddr17 : xlenbits
-register smpuaddr18 : xlenbits
-register smpuaddr19 : xlenbits
-register smpuaddr20 : xlenbits
-register smpuaddr21 : xlenbits
-register smpuaddr22 : xlenbits
-register smpuaddr23 : xlenbits
-register smpuaddr24 : xlenbits
-register smpuaddr25 : xlenbits
-register smpuaddr26 : xlenbits
-register smpuaddr27 : xlenbits
-register smpuaddr28 : xlenbits
-register smpuaddr29 : xlenbits
-register smpuaddr30 : xlenbits
-register smpuaddr31 : xlenbits
-register smpuaddr32 : xlenbits
-register smpuaddr33 : xlenbits
-register smpuaddr34 : xlenbits
-register smpuaddr35 : xlenbits
-register smpuaddr36 : xlenbits
-register smpuaddr37 : xlenbits
-register smpuaddr38 : xlenbits
-register smpuaddr39 : xlenbits
-register smpuaddr40 : xlenbits
-register smpuaddr41 : xlenbits
-register smpuaddr42 : xlenbits
-register smpuaddr43 : xlenbits
-register smpuaddr44 : xlenbits
-register smpuaddr45 : xlenbits
-register smpuaddr46 : xlenbits
-register smpuaddr47 : xlenbits
-register smpuaddr48 : xlenbits
-register smpuaddr49 : xlenbits
-register smpuaddr50 : xlenbits
-register smpuaddr51 : xlenbits
-register smpuaddr52 : xlenbits
-register smpuaddr53 : xlenbits
-register smpuaddr54 : xlenbits
-register smpuaddr55 : xlenbits
-register smpuaddr56 : xlenbits
-register smpuaddr57 : xlenbits
-register smpuaddr58 : xlenbits
-register smpuaddr59 : xlenbits
-register smpuaddr60 : xlenbits
-register smpuaddr61 : xlenbits
-register smpuaddr62 : xlenbits
-register smpuaddr63 : xlenbits
+register spmpaddr0  : xlenbits
+register spmpaddr1  : xlenbits
+register spmpaddr2  : xlenbits
+register spmpaddr3  : xlenbits
+register spmpaddr4  : xlenbits
+register spmpaddr5  : xlenbits
+register spmpaddr6  : xlenbits
+register spmpaddr7  : xlenbits
+register spmpaddr8  : xlenbits
+register spmpaddr9  : xlenbits
+register spmpaddr10 : xlenbits
+register spmpaddr11 : xlenbits
+register spmpaddr12 : xlenbits
+register spmpaddr13 : xlenbits
+register spmpaddr14 : xlenbits
+register spmpaddr15 : xlenbits
+register spmpaddr16 : xlenbits
+register spmpaddr17 : xlenbits
+register spmpaddr18 : xlenbits
+register spmpaddr19 : xlenbits
+register spmpaddr20 : xlenbits
+register spmpaddr21 : xlenbits
+register spmpaddr22 : xlenbits
+register spmpaddr23 : xlenbits
+register spmpaddr24 : xlenbits
+register spmpaddr25 : xlenbits
+register spmpaddr26 : xlenbits
+register spmpaddr27 : xlenbits
+register spmpaddr28 : xlenbits
+register spmpaddr29 : xlenbits
+register spmpaddr30 : xlenbits
+register spmpaddr31 : xlenbits
+register spmpaddr32 : xlenbits
+register spmpaddr33 : xlenbits
+register spmpaddr34 : xlenbits
+register spmpaddr35 : xlenbits
+register spmpaddr36 : xlenbits
+register spmpaddr37 : xlenbits
+register spmpaddr38 : xlenbits
+register spmpaddr39 : xlenbits
+register spmpaddr40 : xlenbits
+register spmpaddr41 : xlenbits
+register spmpaddr42 : xlenbits
+register spmpaddr43 : xlenbits
+register spmpaddr44 : xlenbits
+register spmpaddr45 : xlenbits
+register spmpaddr46 : xlenbits
+register spmpaddr47 : xlenbits
+register spmpaddr48 : xlenbits
+register spmpaddr49 : xlenbits
+register spmpaddr50 : xlenbits
+register spmpaddr51 : xlenbits
+register spmpaddr52 : xlenbits
+register spmpaddr53 : xlenbits
+register spmpaddr54 : xlenbits
+register spmpaddr55 : xlenbits
+register spmpaddr56 : xlenbits
+register spmpaddr57 : xlenbits
+register spmpaddr58 : xlenbits
+register spmpaddr59 : xlenbits
+register spmpaddr60 : xlenbits
+register spmpaddr61 : xlenbits
+register spmpaddr62 : xlenbits
+register spmpaddr63 : xlenbits
 
-/* Packing and unpacking smpucfg regs for xlen-width accesses */
+/* Packing and unpacking spmpcfg regs for xlen-width accesses */
 
-val smpuReadCfgReg : forall 'n, 0 <= 'n < 16 . (atom('n)) -> xlenbits effect {rreg}
-function smpuReadCfgReg(n) = {
+val spmpReadCfgReg : forall 'n, 0 <= 'n < 16 . (atom('n)) -> xlenbits effect {rreg}
+function spmpReadCfgReg(n) = {
   if   sizeof(xlen) == 32
   then match n {
-         0  => append(smpu3cfg.bits(),  append(smpu2cfg.bits(),  append(smpu1cfg.bits(),  smpu0cfg.bits()))),
-         1  => append(smpu7cfg.bits(),  append(smpu6cfg.bits(),  append(smpu5cfg.bits(),  smpu4cfg.bits()))),
-         2  => append(smpu11cfg.bits(), append(smpu10cfg.bits(), append(smpu9cfg.bits(),  smpu8cfg.bits()))),
-         3  => append(smpu15cfg.bits(), append(smpu14cfg.bits(), append(smpu13cfg.bits(), smpu12cfg.bits()))),
-         4  => append(smpu19cfg.bits(), append(smpu18cfg.bits(), append(smpu17cfg.bits(), smpu16cfg.bits()))),
-         5  => append(smpu23cfg.bits(), append(smpu22cfg.bits(), append(smpu21cfg.bits(), smpu20cfg.bits()))),
-         6  => append(smpu27cfg.bits(), append(smpu26cfg.bits(), append(smpu25cfg.bits(), smpu24cfg.bits()))),
-         7  => append(smpu31cfg.bits(), append(smpu30cfg.bits(), append(smpu29cfg.bits(), smpu28cfg.bits()))),
-         8  => append(smpu35cfg.bits(), append(smpu34cfg.bits(), append(smpu33cfg.bits(), smpu32cfg.bits()))),
-         9  => append(smpu39cfg.bits(), append(smpu38cfg.bits(), append(smpu37cfg.bits(), smpu36cfg.bits()))),
-         10 => append(smpu43cfg.bits(), append(smpu42cfg.bits(), append(smpu41cfg.bits(), smpu40cfg.bits()))),
-         11 => append(smpu47cfg.bits(), append(smpu46cfg.bits(), append(smpu45cfg.bits(), smpu44cfg.bits()))),
-         12 => append(smpu51cfg.bits(), append(smpu50cfg.bits(), append(smpu49cfg.bits(), smpu48cfg.bits()))),
-         13 => append(smpu55cfg.bits(), append(smpu54cfg.bits(), append(smpu53cfg.bits(), smpu52cfg.bits()))),
-         14 => append(smpu59cfg.bits(), append(smpu58cfg.bits(), append(smpu57cfg.bits(), smpu56cfg.bits()))),
-         15 => append(smpu63cfg.bits(), append(smpu62cfg.bits(), append(smpu61cfg.bits(), smpu60cfg.bits())))
+         0  => append(spmp3cfg.bits(),  append(spmp2cfg.bits(),  append(spmp1cfg.bits(),  spmp0cfg.bits()))),
+         1  => append(spmp7cfg.bits(),  append(spmp6cfg.bits(),  append(spmp5cfg.bits(),  spmp4cfg.bits()))),
+         2  => append(spmp11cfg.bits(), append(spmp10cfg.bits(), append(spmp9cfg.bits(),  spmp8cfg.bits()))),
+         3  => append(spmp15cfg.bits(), append(spmp14cfg.bits(), append(spmp13cfg.bits(), spmp12cfg.bits()))),
+         4  => append(spmp19cfg.bits(), append(spmp18cfg.bits(), append(spmp17cfg.bits(), spmp16cfg.bits()))),
+         5  => append(spmp23cfg.bits(), append(spmp22cfg.bits(), append(spmp21cfg.bits(), spmp20cfg.bits()))),
+         6  => append(spmp27cfg.bits(), append(spmp26cfg.bits(), append(spmp25cfg.bits(), spmp24cfg.bits()))),
+         7  => append(spmp31cfg.bits(), append(spmp30cfg.bits(), append(spmp29cfg.bits(), spmp28cfg.bits()))),
+         8  => append(spmp35cfg.bits(), append(spmp34cfg.bits(), append(spmp33cfg.bits(), spmp32cfg.bits()))),
+         9  => append(spmp39cfg.bits(), append(spmp38cfg.bits(), append(spmp37cfg.bits(), spmp36cfg.bits()))),
+         10 => append(spmp43cfg.bits(), append(spmp42cfg.bits(), append(spmp41cfg.bits(), spmp40cfg.bits()))),
+         11 => append(spmp47cfg.bits(), append(spmp46cfg.bits(), append(spmp45cfg.bits(), spmp44cfg.bits()))),
+         12 => append(spmp51cfg.bits(), append(spmp50cfg.bits(), append(spmp49cfg.bits(), spmp48cfg.bits()))),
+         13 => append(spmp55cfg.bits(), append(spmp54cfg.bits(), append(spmp53cfg.bits(), spmp52cfg.bits()))),
+         14 => append(spmp59cfg.bits(), append(spmp58cfg.bits(), append(spmp57cfg.bits(), spmp56cfg.bits()))),
+         15 => append(spmp63cfg.bits(), append(spmp62cfg.bits(), append(spmp61cfg.bits(), spmp60cfg.bits())))
        }
   else match n { //  sizeof(xlen) == 64
-         0  => append(smpu7cfg.bits(),  append(smpu6cfg.bits(),  append(smpu5cfg.bits(),  append(smpu4cfg.bits(),  append(smpu3cfg.bits(),  append(smpu2cfg.bits(),  append(smpu1cfg.bits(),  smpu0cfg.bits()))))))),
-         2  => append(smpu15cfg.bits(), append(smpu14cfg.bits(), append(smpu13cfg.bits(), append(smpu12cfg.bits(), append(smpu11cfg.bits(), append(smpu10cfg.bits(), append(smpu9cfg.bits(),  smpu8cfg.bits()))))))),
-         4  => append(smpu23cfg.bits(), append(smpu22cfg.bits(), append(smpu21cfg.bits(), append(smpu20cfg.bits(), append(smpu19cfg.bits(), append(smpu18cfg.bits(), append(smpu17cfg.bits(), smpu16cfg.bits()))))))),
-         6  => append(smpu31cfg.bits(), append(smpu30cfg.bits(), append(smpu29cfg.bits(), append(smpu28cfg.bits(), append(smpu27cfg.bits(), append(smpu26cfg.bits(), append(smpu25cfg.bits(), smpu24cfg.bits()))))))),
-         8  => append(smpu39cfg.bits(), append(smpu38cfg.bits(), append(smpu37cfg.bits(), append(smpu36cfg.bits(), append(smpu35cfg.bits(), append(smpu34cfg.bits(), append(smpu33cfg.bits(), smpu32cfg.bits()))))))),
-         10 => append(smpu47cfg.bits(), append(smpu46cfg.bits(), append(smpu45cfg.bits(), append(smpu44cfg.bits(), append(smpu43cfg.bits(), append(smpu42cfg.bits(), append(smpu41cfg.bits(), smpu40cfg.bits()))))))),
-         12 => append(smpu55cfg.bits(), append(smpu54cfg.bits(), append(smpu53cfg.bits(), append(smpu52cfg.bits(), append(smpu51cfg.bits(), append(smpu50cfg.bits(), append(smpu49cfg.bits(), smpu48cfg.bits()))))))),
-         14 => append(smpu63cfg.bits(), append(smpu62cfg.bits(), append(smpu61cfg.bits(), append(smpu60cfg.bits(), append(smpu59cfg.bits(), append(smpu58cfg.bits(), append(smpu57cfg.bits(), smpu56cfg.bits())))))))
+         0  => append(spmp7cfg.bits(),  append(spmp6cfg.bits(),  append(spmp5cfg.bits(),  append(spmp4cfg.bits(),  append(spmp3cfg.bits(),  append(spmp2cfg.bits(),  append(spmp1cfg.bits(),  spmp0cfg.bits()))))))),
+         2  => append(spmp15cfg.bits(), append(spmp14cfg.bits(), append(spmp13cfg.bits(), append(spmp12cfg.bits(), append(spmp11cfg.bits(), append(spmp10cfg.bits(), append(spmp9cfg.bits(),  spmp8cfg.bits()))))))),
+         4  => append(spmp23cfg.bits(), append(spmp22cfg.bits(), append(spmp21cfg.bits(), append(spmp20cfg.bits(), append(spmp19cfg.bits(), append(spmp18cfg.bits(), append(spmp17cfg.bits(), spmp16cfg.bits()))))))),
+         6  => append(spmp31cfg.bits(), append(spmp30cfg.bits(), append(spmp29cfg.bits(), append(spmp28cfg.bits(), append(spmp27cfg.bits(), append(spmp26cfg.bits(), append(spmp25cfg.bits(), spmp24cfg.bits()))))))),
+         8  => append(spmp39cfg.bits(), append(spmp38cfg.bits(), append(spmp37cfg.bits(), append(spmp36cfg.bits(), append(spmp35cfg.bits(), append(spmp34cfg.bits(), append(spmp33cfg.bits(), spmp32cfg.bits()))))))),
+         10 => append(spmp47cfg.bits(), append(spmp46cfg.bits(), append(spmp45cfg.bits(), append(spmp44cfg.bits(), append(spmp43cfg.bits(), append(spmp42cfg.bits(), append(spmp41cfg.bits(), spmp40cfg.bits()))))))),
+         12 => append(spmp55cfg.bits(), append(spmp54cfg.bits(), append(spmp53cfg.bits(), append(spmp52cfg.bits(), append(spmp51cfg.bits(), append(spmp50cfg.bits(), append(spmp49cfg.bits(), spmp48cfg.bits()))))))),
+         14 => append(spmp63cfg.bits(), append(spmp62cfg.bits(), append(spmp61cfg.bits(), append(spmp60cfg.bits(), append(spmp59cfg.bits(), append(spmp58cfg.bits(), append(spmp57cfg.bits(), spmp56cfg.bits())))))))
        }
 }
 
 /* Helpers to handle S mode regions */
-// function mpuSmodeRegion(cfg: Smpucfg_ent) -> bool =
+// function mpuSmodeRegion(cfg: Spmpcfg_ent) -> bool =
 //    cfg.S() == 0b1
 
-function smpuWriteCfg(cfg: Smpucfg_ent, v: bits(8)) -> Smpucfg_ent =
-  Mk_Smpucfg_ent(v & 0x9f)  // Bits 5 and 6 are zero.
+function spmpWriteCfg(cfg: Spmpcfg_ent, v: bits(8)) -> Spmpcfg_ent =
+  Mk_Spmpcfg_ent(v & 0x9f)  // Bits 5 and 6 are zero.
 
-val smpuWriteCfgReg : forall 'n, 0 <= 'n < 16 . (atom('n), xlenbits) -> unit effect {rreg, wreg}
-function smpuWriteCfgReg(n, v) = {
+val spmpWriteCfgReg : forall 'n, 0 <= 'n < 16 . (atom('n), xlenbits) -> unit effect {rreg, wreg}
+function spmpWriteCfgReg(n, v) = {
   if   sizeof(xlen) == 32
   then match n {
-         0 => { smpu0cfg   = smpuWriteCfg(smpu0cfg,  v[7 ..0]);
-                smpu1cfg   = smpuWriteCfg(smpu1cfg,  v[15..8]);
-                smpu2cfg   = smpuWriteCfg(smpu2cfg,  v[23..16]);
-                smpu3cfg   = smpuWriteCfg(smpu3cfg,  v[31..24]);
+         0 => { spmp0cfg   = spmpWriteCfg(spmp0cfg,  v[7 ..0]);
+                spmp1cfg   = spmpWriteCfg(spmp1cfg,  v[15..8]);
+                spmp2cfg   = spmpWriteCfg(spmp2cfg,  v[23..16]);
+                spmp3cfg   = spmpWriteCfg(spmp3cfg,  v[31..24]);
               },
-         1 => { smpu4cfg   = smpuWriteCfg(smpu4cfg,  v[7 ..0]);
-                smpu5cfg   = smpuWriteCfg(smpu5cfg,  v[15..8]);
-                smpu6cfg   = smpuWriteCfg(smpu6cfg,  v[23..16]);
-                smpu7cfg   = smpuWriteCfg(smpu7cfg,  v[31..24]);
+         1 => { spmp4cfg   = spmpWriteCfg(spmp4cfg,  v[7 ..0]);
+                spmp5cfg   = spmpWriteCfg(spmp5cfg,  v[15..8]);
+                spmp6cfg   = spmpWriteCfg(spmp6cfg,  v[23..16]);
+                spmp7cfg   = spmpWriteCfg(spmp7cfg,  v[31..24]);
               },
-         2 => { smpu8cfg   = smpuWriteCfg(smpu8cfg,  v[7 ..0]);
-                smpu9cfg   = smpuWriteCfg(smpu9cfg,  v[15..8]);
-                smpu10cfg  = smpuWriteCfg(smpu10cfg, v[23..16]);
-                smpu11cfg  = smpuWriteCfg(smpu11cfg, v[31..24]);
+         2 => { spmp8cfg   = spmpWriteCfg(spmp8cfg,  v[7 ..0]);
+                spmp9cfg   = spmpWriteCfg(spmp9cfg,  v[15..8]);
+                spmp10cfg  = spmpWriteCfg(spmp10cfg, v[23..16]);
+                spmp11cfg  = spmpWriteCfg(spmp11cfg, v[31..24]);
               },
-         3 => { smpu12cfg  = smpuWriteCfg(smpu12cfg, v[7 ..0]);
-                smpu13cfg  = smpuWriteCfg(smpu13cfg, v[15..8]);
-                smpu14cfg  = smpuWriteCfg(smpu14cfg, v[23..16]);
-                smpu15cfg  = smpuWriteCfg(smpu15cfg, v[31..24]);
+         3 => { spmp12cfg  = spmpWriteCfg(spmp12cfg, v[7 ..0]);
+                spmp13cfg  = spmpWriteCfg(spmp13cfg, v[15..8]);
+                spmp14cfg  = spmpWriteCfg(spmp14cfg, v[23..16]);
+                spmp15cfg  = spmpWriteCfg(spmp15cfg, v[31..24]);
               },
-         4 => { smpu16cfg  = smpuWriteCfg(smpu16cfg, v[7 ..0]);
-                smpu17cfg  = smpuWriteCfg(smpu17cfg, v[15..8]);
-                smpu18cfg  = smpuWriteCfg(smpu18cfg, v[23..16]);
-                smpu19cfg  = smpuWriteCfg(smpu19cfg, v[31..24]);
+         4 => { spmp16cfg  = spmpWriteCfg(spmp16cfg, v[7 ..0]);
+                spmp17cfg  = spmpWriteCfg(spmp17cfg, v[15..8]);
+                spmp18cfg  = spmpWriteCfg(spmp18cfg, v[23..16]);
+                spmp19cfg  = spmpWriteCfg(spmp19cfg, v[31..24]);
               },
-         5 => { smpu20cfg  = smpuWriteCfg(smpu20cfg, v[7 ..0]);
-                smpu21cfg  = smpuWriteCfg(smpu21cfg, v[15..8]);
-                smpu22cfg  = smpuWriteCfg(smpu22cfg, v[23..16]);
-                smpu23cfg  = smpuWriteCfg(smpu23cfg, v[31..24]);
+         5 => { spmp20cfg  = spmpWriteCfg(spmp20cfg, v[7 ..0]);
+                spmp21cfg  = spmpWriteCfg(spmp21cfg, v[15..8]);
+                spmp22cfg  = spmpWriteCfg(spmp22cfg, v[23..16]);
+                spmp23cfg  = spmpWriteCfg(spmp23cfg, v[31..24]);
               },
-         6 => { smpu24cfg  = smpuWriteCfg(smpu24cfg, v[7 ..0]);
-                smpu25cfg  = smpuWriteCfg(smpu25cfg, v[15..8]);
-                smpu26cfg  = smpuWriteCfg(smpu26cfg, v[23..16]);
-                smpu27cfg  = smpuWriteCfg(smpu27cfg, v[31..24]);
+         6 => { spmp24cfg  = spmpWriteCfg(spmp24cfg, v[7 ..0]);
+                spmp25cfg  = spmpWriteCfg(spmp25cfg, v[15..8]);
+                spmp26cfg  = spmpWriteCfg(spmp26cfg, v[23..16]);
+                spmp27cfg  = spmpWriteCfg(spmp27cfg, v[31..24]);
               },
-         7 => { smpu28cfg  = smpuWriteCfg(smpu28cfg, v[7 ..0]);
-                smpu29cfg  = smpuWriteCfg(smpu29cfg, v[15..8]);
-                smpu30cfg  = smpuWriteCfg(smpu30cfg, v[23..16]);
-                smpu31cfg  = smpuWriteCfg(smpu31cfg, v[31..24]);
+         7 => { spmp28cfg  = spmpWriteCfg(spmp28cfg, v[7 ..0]);
+                spmp29cfg  = spmpWriteCfg(spmp29cfg, v[15..8]);
+                spmp30cfg  = spmpWriteCfg(spmp30cfg, v[23..16]);
+                spmp31cfg  = spmpWriteCfg(spmp31cfg, v[31..24]);
               },
-         8 => { smpu32cfg  = smpuWriteCfg(smpu32cfg, v[7 ..0]);
-                smpu33cfg  = smpuWriteCfg(smpu33cfg, v[15..8]);
-                smpu34cfg  = smpuWriteCfg(smpu34cfg, v[23..16]);
-                smpu35cfg  = smpuWriteCfg(smpu35cfg, v[31..24]);
+         8 => { spmp32cfg  = spmpWriteCfg(spmp32cfg, v[7 ..0]);
+                spmp33cfg  = spmpWriteCfg(spmp33cfg, v[15..8]);
+                spmp34cfg  = spmpWriteCfg(spmp34cfg, v[23..16]);
+                spmp35cfg  = spmpWriteCfg(spmp35cfg, v[31..24]);
               },
-         9 => { smpu36cfg  = smpuWriteCfg(smpu36cfg, v[7 ..0]);
-                smpu37cfg  = smpuWriteCfg(smpu37cfg, v[15..8]);
-                smpu38cfg  = smpuWriteCfg(smpu38cfg, v[23..16]);
-                smpu39cfg  = smpuWriteCfg(smpu39cfg, v[31..24]);
+         9 => { spmp36cfg  = spmpWriteCfg(spmp36cfg, v[7 ..0]);
+                spmp37cfg  = spmpWriteCfg(spmp37cfg, v[15..8]);
+                spmp38cfg  = spmpWriteCfg(spmp38cfg, v[23..16]);
+                spmp39cfg  = spmpWriteCfg(spmp39cfg, v[31..24]);
               },
-         10 => { smpu40cfg = smpuWriteCfg(smpu40cfg, v[7 ..0]);
-                 smpu41cfg = smpuWriteCfg(smpu41cfg, v[15..8]);
-                 smpu42cfg = smpuWriteCfg(smpu42cfg, v[23..16]);
-                 smpu43cfg = smpuWriteCfg(smpu43cfg, v[31..24]);
+         10 => { spmp40cfg = spmpWriteCfg(spmp40cfg, v[7 ..0]);
+                 spmp41cfg = spmpWriteCfg(spmp41cfg, v[15..8]);
+                 spmp42cfg = spmpWriteCfg(spmp42cfg, v[23..16]);
+                 spmp43cfg = spmpWriteCfg(spmp43cfg, v[31..24]);
               },
-         11 => { smpu44cfg = smpuWriteCfg(smpu44cfg, v[7 ..0]);
-                 smpu45cfg = smpuWriteCfg(smpu45cfg, v[15..8]);
-                 smpu46cfg = smpuWriteCfg(smpu46cfg, v[23..16]);
-                 smpu47cfg = smpuWriteCfg(smpu47cfg, v[31..24]);
+         11 => { spmp44cfg = spmpWriteCfg(spmp44cfg, v[7 ..0]);
+                 spmp45cfg = spmpWriteCfg(spmp45cfg, v[15..8]);
+                 spmp46cfg = spmpWriteCfg(spmp46cfg, v[23..16]);
+                 spmp47cfg = spmpWriteCfg(spmp47cfg, v[31..24]);
               },
-         12 => { smpu48cfg = smpuWriteCfg(smpu48cfg, v[7 ..0]);
-                 smpu49cfg = smpuWriteCfg(smpu49cfg, v[15..8]);
-                 smpu50cfg = smpuWriteCfg(smpu50cfg, v[23..16]);
-                 smpu51cfg = smpuWriteCfg(smpu51cfg, v[31..24]);
+         12 => { spmp48cfg = spmpWriteCfg(spmp48cfg, v[7 ..0]);
+                 spmp49cfg = spmpWriteCfg(spmp49cfg, v[15..8]);
+                 spmp50cfg = spmpWriteCfg(spmp50cfg, v[23..16]);
+                 spmp51cfg = spmpWriteCfg(spmp51cfg, v[31..24]);
               },
-         13 => { smpu52cfg = smpuWriteCfg(smpu52cfg, v[7 ..0]);
-                 smpu53cfg = smpuWriteCfg(smpu53cfg, v[15..8]);
-                 smpu54cfg = smpuWriteCfg(smpu54cfg, v[23..16]);
-                 smpu55cfg = smpuWriteCfg(smpu55cfg, v[31..24]);
+         13 => { spmp52cfg = spmpWriteCfg(spmp52cfg, v[7 ..0]);
+                 spmp53cfg = spmpWriteCfg(spmp53cfg, v[15..8]);
+                 spmp54cfg = spmpWriteCfg(spmp54cfg, v[23..16]);
+                 spmp55cfg = spmpWriteCfg(spmp55cfg, v[31..24]);
               },
-         14 => { smpu56cfg = smpuWriteCfg(smpu56cfg, v[7 ..0]);
-                 smpu57cfg = smpuWriteCfg(smpu57cfg, v[15..8]);
-                 smpu58cfg = smpuWriteCfg(smpu58cfg, v[23..16]);
-                 smpu59cfg = smpuWriteCfg(smpu59cfg, v[31..24]);
+         14 => { spmp56cfg = spmpWriteCfg(spmp56cfg, v[7 ..0]);
+                 spmp57cfg = spmpWriteCfg(spmp57cfg, v[15..8]);
+                 spmp58cfg = spmpWriteCfg(spmp58cfg, v[23..16]);
+                 spmp59cfg = spmpWriteCfg(spmp59cfg, v[31..24]);
               },
-         15 => { smpu60cfg = smpuWriteCfg(smpu60cfg, v[7 ..0]);
-                 smpu61cfg = smpuWriteCfg(smpu61cfg, v[15..8]);
-                 smpu62cfg = smpuWriteCfg(smpu62cfg, v[23..16]);
-                 smpu63cfg = smpuWriteCfg(smpu63cfg, v[31..24]);
+         15 => { spmp60cfg = spmpWriteCfg(spmp60cfg, v[7 ..0]);
+                 spmp61cfg = spmpWriteCfg(spmp61cfg, v[15..8]);
+                 spmp62cfg = spmpWriteCfg(spmp62cfg, v[23..16]);
+                 spmp63cfg = spmpWriteCfg(spmp63cfg, v[31..24]);
               }
        }
   else if sizeof(xlen) == 64
   then match n {
-         0 => { smpu0cfg  = smpuWriteCfg(smpu0cfg,  v[7 ..0]);
-                smpu1cfg  = smpuWriteCfg(smpu1cfg,  v[15..8]);
-                smpu2cfg  = smpuWriteCfg(smpu2cfg,  v[23..16]);
-                smpu3cfg  = smpuWriteCfg(smpu3cfg,  v[31..24]);
-                smpu4cfg  = smpuWriteCfg(smpu4cfg,  v[39..32]);
-                smpu5cfg  = smpuWriteCfg(smpu5cfg,  v[47..40]);
-                smpu6cfg  = smpuWriteCfg(smpu6cfg,  v[55..48]);
-                smpu7cfg  = smpuWriteCfg(smpu7cfg,  v[63..56])
+         0 => { spmp0cfg  = spmpWriteCfg(spmp0cfg,  v[7 ..0]);
+                spmp1cfg  = spmpWriteCfg(spmp1cfg,  v[15..8]);
+                spmp2cfg  = spmpWriteCfg(spmp2cfg,  v[23..16]);
+                spmp3cfg  = spmpWriteCfg(spmp3cfg,  v[31..24]);
+                spmp4cfg  = spmpWriteCfg(spmp4cfg,  v[39..32]);
+                spmp5cfg  = spmpWriteCfg(spmp5cfg,  v[47..40]);
+                spmp6cfg  = spmpWriteCfg(spmp6cfg,  v[55..48]);
+                spmp7cfg  = spmpWriteCfg(spmp7cfg,  v[63..56])
               },
-         2 => { smpu8cfg  = smpuWriteCfg(smpu8cfg,  v[7 ..0]);
-                smpu9cfg  = smpuWriteCfg(smpu9cfg,  v[15..8]);
-                smpu10cfg = smpuWriteCfg(smpu10cfg, v[23..16]);
-                smpu11cfg = smpuWriteCfg(smpu11cfg, v[31..24]);
-                smpu12cfg = smpuWriteCfg(smpu12cfg, v[39..32]);
-                smpu13cfg = smpuWriteCfg(smpu13cfg, v[47..40]);
-                smpu14cfg = smpuWriteCfg(smpu14cfg, v[55..48]);
-                smpu15cfg = smpuWriteCfg(smpu15cfg, v[63..56])
+         2 => { spmp8cfg  = spmpWriteCfg(spmp8cfg,  v[7 ..0]);
+                spmp9cfg  = spmpWriteCfg(spmp9cfg,  v[15..8]);
+                spmp10cfg = spmpWriteCfg(spmp10cfg, v[23..16]);
+                spmp11cfg = spmpWriteCfg(spmp11cfg, v[31..24]);
+                spmp12cfg = spmpWriteCfg(spmp12cfg, v[39..32]);
+                spmp13cfg = spmpWriteCfg(spmp13cfg, v[47..40]);
+                spmp14cfg = spmpWriteCfg(spmp14cfg, v[55..48]);
+                spmp15cfg = spmpWriteCfg(spmp15cfg, v[63..56])
               },
-         4 => { smpu16cfg = smpuWriteCfg(smpu16cfg, v[7 ..0]);
-                smpu17cfg = smpuWriteCfg(smpu17cfg, v[15..8]);
-                smpu18cfg = smpuWriteCfg(smpu18cfg, v[23..16]);
-                smpu19cfg = smpuWriteCfg(smpu19cfg, v[31..24]);
-                smpu20cfg = smpuWriteCfg(smpu20cfg, v[39..32]);
-                smpu21cfg = smpuWriteCfg(smpu21cfg, v[47..40]);
-                smpu22cfg = smpuWriteCfg(smpu22cfg, v[55..48]);
-                smpu23cfg = smpuWriteCfg(smpu23cfg, v[63..56])
+         4 => { spmp16cfg = spmpWriteCfg(spmp16cfg, v[7 ..0]);
+                spmp17cfg = spmpWriteCfg(spmp17cfg, v[15..8]);
+                spmp18cfg = spmpWriteCfg(spmp18cfg, v[23..16]);
+                spmp19cfg = spmpWriteCfg(spmp19cfg, v[31..24]);
+                spmp20cfg = spmpWriteCfg(spmp20cfg, v[39..32]);
+                spmp21cfg = spmpWriteCfg(spmp21cfg, v[47..40]);
+                spmp22cfg = spmpWriteCfg(spmp22cfg, v[55..48]);
+                spmp23cfg = spmpWriteCfg(spmp23cfg, v[63..56])
               },
-         6 => { smpu24cfg = smpuWriteCfg(smpu24cfg, v[7 ..0]);
-                smpu25cfg = smpuWriteCfg(smpu25cfg, v[15..8]);
-                smpu26cfg = smpuWriteCfg(smpu26cfg, v[23..16]);
-                smpu27cfg = smpuWriteCfg(smpu27cfg, v[31..24]);
-                smpu28cfg = smpuWriteCfg(smpu28cfg, v[39..32]);
-                smpu29cfg = smpuWriteCfg(smpu29cfg, v[47..40]);
-                smpu30cfg = smpuWriteCfg(smpu30cfg, v[55..48]);
-                smpu31cfg = smpuWriteCfg(smpu31cfg, v[63..56])
+         6 => { spmp24cfg = spmpWriteCfg(spmp24cfg, v[7 ..0]);
+                spmp25cfg = spmpWriteCfg(spmp25cfg, v[15..8]);
+                spmp26cfg = spmpWriteCfg(spmp26cfg, v[23..16]);
+                spmp27cfg = spmpWriteCfg(spmp27cfg, v[31..24]);
+                spmp28cfg = spmpWriteCfg(spmp28cfg, v[39..32]);
+                spmp29cfg = spmpWriteCfg(spmp29cfg, v[47..40]);
+                spmp30cfg = spmpWriteCfg(spmp30cfg, v[55..48]);
+                spmp31cfg = spmpWriteCfg(spmp31cfg, v[63..56])
               },
-         8 => { smpu32cfg = smpuWriteCfg(smpu32cfg, v[7 ..0]);
-                smpu33cfg = smpuWriteCfg(smpu33cfg, v[15..8]);
-                smpu34cfg = smpuWriteCfg(smpu34cfg, v[23..16]);
-                smpu35cfg = smpuWriteCfg(smpu35cfg, v[31..24]);
-                smpu36cfg = smpuWriteCfg(smpu36cfg, v[39..32]);
-                smpu37cfg = smpuWriteCfg(smpu37cfg, v[47..40]);
-                smpu38cfg = smpuWriteCfg(smpu38cfg, v[55..48]);
-                smpu39cfg = smpuWriteCfg(smpu39cfg, v[63..56])
+         8 => { spmp32cfg = spmpWriteCfg(spmp32cfg, v[7 ..0]);
+                spmp33cfg = spmpWriteCfg(spmp33cfg, v[15..8]);
+                spmp34cfg = spmpWriteCfg(spmp34cfg, v[23..16]);
+                spmp35cfg = spmpWriteCfg(spmp35cfg, v[31..24]);
+                spmp36cfg = spmpWriteCfg(spmp36cfg, v[39..32]);
+                spmp37cfg = spmpWriteCfg(spmp37cfg, v[47..40]);
+                spmp38cfg = spmpWriteCfg(spmp38cfg, v[55..48]);
+                spmp39cfg = spmpWriteCfg(spmp39cfg, v[63..56])
               },
-         10 => { smpu40cfg = smpuWriteCfg(smpu40cfg, v[7 ..0]);
-                smpu41cfg  = smpuWriteCfg(smpu41cfg, v[15..8]);
-                smpu42cfg  = smpuWriteCfg(smpu42cfg, v[23..16]);
-                smpu43cfg  = smpuWriteCfg(smpu43cfg, v[31..24]);
-                smpu44cfg  = smpuWriteCfg(smpu44cfg, v[39..32]);
-                smpu45cfg  = smpuWriteCfg(smpu45cfg, v[47..40]);
-                smpu46cfg  = smpuWriteCfg(smpu46cfg, v[55..48]);
-                smpu47cfg  = smpuWriteCfg(smpu47cfg, v[63..56])
+         10 => { spmp40cfg = spmpWriteCfg(spmp40cfg, v[7 ..0]);
+                spmp41cfg  = spmpWriteCfg(spmp41cfg, v[15..8]);
+                spmp42cfg  = spmpWriteCfg(spmp42cfg, v[23..16]);
+                spmp43cfg  = spmpWriteCfg(spmp43cfg, v[31..24]);
+                spmp44cfg  = spmpWriteCfg(spmp44cfg, v[39..32]);
+                spmp45cfg  = spmpWriteCfg(spmp45cfg, v[47..40]);
+                spmp46cfg  = spmpWriteCfg(spmp46cfg, v[55..48]);
+                spmp47cfg  = spmpWriteCfg(spmp47cfg, v[63..56])
               },
-         12 => { smpu48cfg = smpuWriteCfg(smpu48cfg, v[7 ..0]);
-                 smpu49cfg = smpuWriteCfg(smpu49cfg, v[15..8]);
-                 smpu50cfg = smpuWriteCfg(smpu50cfg, v[23..16]);
-                 smpu51cfg = smpuWriteCfg(smpu51cfg, v[31..24]);
-                 smpu52cfg = smpuWriteCfg(smpu52cfg, v[39..32]);
-                 smpu53cfg = smpuWriteCfg(smpu53cfg, v[47..40]);
-                 smpu54cfg = smpuWriteCfg(smpu54cfg, v[55..48]);
-                 smpu55cfg = smpuWriteCfg(smpu55cfg, v[63..56])
+         12 => { spmp48cfg = spmpWriteCfg(spmp48cfg, v[7 ..0]);
+                 spmp49cfg = spmpWriteCfg(spmp49cfg, v[15..8]);
+                 spmp50cfg = spmpWriteCfg(spmp50cfg, v[23..16]);
+                 spmp51cfg = spmpWriteCfg(spmp51cfg, v[31..24]);
+                 spmp52cfg = spmpWriteCfg(spmp52cfg, v[39..32]);
+                 spmp53cfg = spmpWriteCfg(spmp53cfg, v[47..40]);
+                 spmp54cfg = spmpWriteCfg(spmp54cfg, v[55..48]);
+                 spmp55cfg = spmpWriteCfg(spmp55cfg, v[63..56])
               },
-         14 => { smpu56cfg = smpuWriteCfg(smpu56cfg, v[7 ..0]);
-                 smpu57cfg = smpuWriteCfg(smpu57cfg, v[15..8]);
-                 smpu58cfg = smpuWriteCfg(smpu58cfg, v[23..16]);
-                 smpu59cfg = smpuWriteCfg(smpu59cfg, v[31..24]);
-                 smpu60cfg = smpuWriteCfg(smpu60cfg, v[39..32]);
-                 smpu61cfg = smpuWriteCfg(smpu61cfg, v[47..40]);
-                 smpu62cfg = smpuWriteCfg(smpu62cfg, v[55..48]);
-                 smpu63cfg = smpuWriteCfg(smpu63cfg, v[63..56])
+         14 => { spmp56cfg = spmpWriteCfg(spmp56cfg, v[7 ..0]);
+                 spmp57cfg = spmpWriteCfg(spmp57cfg, v[15..8]);
+                 spmp58cfg = spmpWriteCfg(spmp58cfg, v[23..16]);
+                 spmp59cfg = spmpWriteCfg(spmp59cfg, v[31..24]);
+                 spmp60cfg = spmpWriteCfg(spmp60cfg, v[39..32]);
+                 spmp61cfg = spmpWriteCfg(spmp61cfg, v[47..40]);
+                 spmp62cfg = spmpWriteCfg(spmp62cfg, v[55..48]);
+                 spmp63cfg = spmpWriteCfg(spmp63cfg, v[63..56])
               }
        }
 }
 
-function smpuWriteAddr(reg: xlenbits, v: xlenbits) -> xlenbits =
+function spmpWriteAddr(reg: xlenbits, v: xlenbits) -> xlenbits =
   if   sizeof(xlen) == 32
   then { v }
   else { EXTZ(v[53..0]) }
