@@ -113,38 +113,35 @@ function checked_mem_read forall 'n, 0 < 'n <= max_mem_access . (
   rl : bool,
   res: bool,
   meta : bool,
-) -> MemoryOpResult((bits(8 * 'n), mem_meta)) =
-  match phys_access_check(t, priv, paddr, width) {
+) -> MemoryOpResult((bits(8 * 'n), mem_meta)) = {
+  /* First check SPMP if enabled */
+  let spmp_result : option(ExceptionType) = 
+    if plat_enable_spmp()
+    then spmpCheck(paddr, width, t, priv)
+    else None();
+  
+  match spmp_result {
     Some(e) => Err(e),
     None() => {
-      if   within_mmio_readable(paddr, width)
-      then MemoryOpResult_add_meta(mmio_read(t, paddr, width), default_meta)
-      else if within_phys_mem(paddr, width)
-      then match ext_check_phys_mem_read(t, paddr, width, aq, rl, res, meta) {
-        Ext_PhysAddr_OK()     => phys_mem_read(t, paddr, width, aq, rl, res, meta),
-        Ext_PhysAddr_Error(e) => Err(e)
-      } else match t {
-        InstructionFetch() => Err(E_Fetch_Access_Fault()),
-        Read(Data) => Err(E_Load_Access_Fault()),
-        _          => Err(E_SAMO_Access_Fault())
+      match phys_access_check(t, priv, paddr, width) {
+        Some(e) => Err(e),
+        None() => {
+          if   within_mmio_readable(paddr, width)
+          then MemoryOpResult_add_meta(mmio_read(t, paddr, width), default_meta)
+          else if within_phys_mem(paddr, width)
+          then match ext_check_phys_mem_read(t, paddr, width, aq, rl, res, meta) {
+            Ext_PhysAddr_OK()     => phys_mem_read(t, paddr, width, aq, rl, res, meta),
+            Ext_PhysAddr_Error(e) => Err(e)
+          } else match t {
+            InstructionFetch() => Err(E_Fetch_Access_Fault()),
+            Read(Data) => Err(E_Load_Access_Fault()),
+            _          => Err(E_SAMO_Access_Fault())
+          }
+        }
       }
     }
   }
-
-/* SPMP checks if enabled. SPMP checks are performed before PMP if enabled. */
-function spmp_mem_read forall 'n, 0 < 'n <= max_mem_access . (t : AccessType(ext_access_type), p : Privilege, paddr : xlenbits, width : atom('n), aq : bool, rl : bool, res: bool, meta : bool) -> MemoryOpResult((bits(8 * 'n), mem_meta)) =
-  if   ((~ (plat_enable_pmp())) & (~ (plat_enable_spmp())))
-  then checked_mem_read(t, paddr, width, aq, rl, res, meta)
-  else {
-    if (plat_enable_spmp())
-    then {
-      match spmpCheck(paddr, width, t, p) {
-        None()  => pmp_mem_read(t, p, paddr, width, aq, rl, res, meta),
-        Some(e) => MemException(e)
-      }
-    }
-    else pmp_mem_read(t, p, paddr, width, aq, rl, res, meta)
-  }
+}
 
 /* Atomic accesses can be done to MMIO regions, e.g. in kernel access to device registers. */
 
@@ -202,22 +199,34 @@ function checked_mem_write forall 'n, 0 < 'n <= max_mem_access . (
   aq : bool,
   rl : bool,
   con : bool,
-) -> MemoryOpResult(bool) =
-  match phys_access_check(typ, priv, paddr, width) {
+) -> MemoryOpResult(bool) = {
+  /* First check SPMP if enabled */
+  let spmp_result : option(ExceptionType) = 
+    if plat_enable_spmp()
+    then spmpCheck(paddr, width, typ, priv)
+    else None();
+  
+  match spmp_result {
     Some(e) => Err(e),
     None() => {
-      if   within_mmio_writable(paddr, width)
-      then mmio_write(paddr, width, data)
-      else if within_phys_mem(paddr, width)
-      then {
-        let wk = write_kind_of_flags(aq, rl, con);
-        match ext_check_phys_mem_write (wk, paddr, width, data, meta) {
-          Ext_PhysAddr_OK() => phys_mem_write(wk, paddr, width, data, meta),
-          Ext_PhysAddr_Error(e)  => Err(e),
+      match phys_access_check(typ, priv, paddr, width) {
+        Some(e) => Err(e),
+        None() => {
+          if   within_mmio_writable(paddr, width)
+          then mmio_write(paddr, width, data)
+          else if within_phys_mem(paddr, width)
+          then {
+            let wk = write_kind_of_flags(aq, rl, con);
+            match ext_check_phys_mem_write (wk, paddr, width, data, meta) {
+              Ext_PhysAddr_OK() => phys_mem_write(wk, paddr, width, data, meta),
+              Ext_PhysAddr_Error(e)  => Err(e),
+            }
+          } else Err(E_SAMO_Access_Fault())
         }
-      } else Err(E_SAMO_Access_Fault())
+      }
     }
   }
+}
 
 /* Atomic accesses can be done to MMIO regions, e.g. in kernel access to device registers. */
 

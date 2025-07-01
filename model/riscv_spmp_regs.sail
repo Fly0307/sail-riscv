@@ -1,3 +1,138 @@
+/*=======================================================================================*/
+/*  SPMP (Supervisor Mode Physical Memory Protection) Register Definitions              */
+/*                                                                                       */
+/*  This module implements the SPMP CSR interface as specified in .    */
+/*  SPMP provides 64 protection entries with configuration and address registers.       */
+/*                                                                                       */
+/*  CSR Address Space ( Section 2.1):                                   */
+/*    0x1A0-0x1AF: spmpcfg0-spmpcfg15   (Configuration registers)                       */
+/*    0x1B0-0x1EF: spmpaddr0-spmpaddr63 (Address registers)                             */
+/*                                                                                       */
+/*  Privilege Level: Supervisor (0x1XX address space)                                   */
+/*                                                                                       */
+/*  Lock Bit (L) Access Control Rules:                                                  */
+/*    - L bit is only accessible to M-mode for writes                                   */
+/*    - M-mode: Can read/write L bit and modify locked entries                          */
+/*    - S-mode: Cannot modify locked entries (writes ignored when L=1)                 */
+/*    - L bit is not sticky - can only be reset by M-mode                              */
+/*    - Setting L=1 locks entry even when A=OFF                                        */
+/*    - For locked TOR entries, S-mode writes to previous addr register ignored        */
+/*=======================================================================================*/
+
+/* SPMP platform configuration parameters.
+ * These values are typically set at build time based on platform capabilities. */
+let sys_spmp_enabled : bool = config memory.spmp.enabled  // Platform SPMP support
+let sys_spmp_count : nat = config memory.spmp.count       // Number of SPMP entries
+
+/*=======================================================================================*/
+/*  SPMP Configuration Register CSR Name Mappings (0x1A0-0x1AF)                        */
+/*                                                                                       */
+/*  Each spmpcfg register contains configuration for multiple SPMP entries:             */
+/*    - RV32: 4 entries per register (8 bits each)                                      */
+/*    - RV64: 8 entries per register (8 bits each)                                      */
+/*                                                                                       */
+/*  Configuration bits per entry ( Section 2.2):                       */
+/*    [7]: L - Lock bit (prevents further modifications when set)                       */
+/*    [6]: S - Supervisor/User mode shared permission management (Section 2.3)         */
+/*    [5]: Reserved (WPRI - Write Preserve, Read Ignore)                               */
+/*    [4:3]: A - Address matching mode (OFF/TOR/NA4/NAPOT)                             */
+/*    [2]: X - Execute permission                                                       */
+/*    [1]: W - Write permission                                                         */
+/*    [0]: R - Read permission                                                          */
+/*=======================================================================================*/
+
+mapping clause csr_name_map = 0x1A0  <-> "spmpcfg0"   // SPMP config entries 0-7 (RV64) or 0-3 (RV32)
+mapping clause csr_name_map = 0x1A1  <-> "spmpcfg1"   // SPMP config entries 4-7 (RV32 only)
+mapping clause csr_name_map = 0x1A2  <-> "spmpcfg2"   // SPMP config entries 8-15 (RV64) or 8-11 (RV32)
+mapping clause csr_name_map = 0x1A3  <-> "spmpcfg3"   // SPMP config entries 12-15 (RV32 only)
+mapping clause csr_name_map = 0x1A4  <-> "spmpcfg4"   // SPMP config entries 16-23 (RV64) or 16-19 (RV32)
+mapping clause csr_name_map = 0x1A5  <-> "spmpcfg5"   // SPMP config entries 20-23 (RV32 only)
+mapping clause csr_name_map = 0x1A6  <-> "spmpcfg6"   // SPMP config entries 24-31 (RV64) or 24-27 (RV32)
+mapping clause csr_name_map = 0x1A7  <-> "spmpcfg7"   // SPMP config entries 28-31 (RV32 only)
+mapping clause csr_name_map = 0x1A8  <-> "spmpcfg8"   // SPMP config entries 32-39 (RV64) or 32-35 (RV32)
+mapping clause csr_name_map = 0x1A9  <-> "spmpcfg9"   // SPMP config entries 36-39 (RV32 only)
+mapping clause csr_name_map = 0x1AA  <-> "spmpcfg10"  // SPMP config entries 40-47 (RV64) or 40-43 (RV32)
+mapping clause csr_name_map = 0x1AB  <-> "spmpcfg11"  // SPMP config entries 44-47 (RV32 only)
+mapping clause csr_name_map = 0x1AC  <-> "spmpcfg12"  // SPMP config entries 48-55 (RV64) or 48-51 (RV32)
+mapping clause csr_name_map = 0x1AD  <-> "spmpcfg13"  // SPMP config entries 52-55 (RV32 only)
+mapping clause csr_name_map = 0x1AE  <-> "spmpcfg14"  // SPMP config entries 56-63 (RV64) or 56-59 (RV32)
+mapping clause csr_name_map = 0x1AF  <-> "spmpcfg15"  // SPMP config entries 60-63 (RV32 only)
+
+/*=======================================================================================*/
+/*  SPMP Address Register CSR Name Mappings (0x1B0-0x1EF)                              */
+/*                                                                                       */
+/*  Each spmpaddr register contains one address value ( Section 2.2):  */
+/*    - Contains bits [XLEN-1:2] of the address (word-aligned)                          */
+/*    - Interpretation depends on address matching mode in corresponding spmpcfg        */
+/*    - TOR: Top address of range [prev_addr*4, addr*4)                                 */
+/*    - NA4/NAPOT: Base address with mode-specific encoding                             */
+/*=======================================================================================*/
+
+mapping clause csr_name_map = 0x1B0  <-> "spmpaddr0"   // SPMP address register 0
+mapping clause csr_name_map = 0x1B1  <-> "spmpaddr1"   // SPMP address register 1
+mapping clause csr_name_map = 0x1B2  <-> "spmpaddr2"   // SPMP address register 2
+mapping clause csr_name_map = 0x1B3  <-> "spmpaddr3"   // SPMP address register 3
+mapping clause csr_name_map = 0x1B4  <-> "spmpaddr4"   // SPMP address register 4
+mapping clause csr_name_map = 0x1B5  <-> "spmpaddr5"   // SPMP address register 5
+mapping clause csr_name_map = 0x1B6  <-> "spmpaddr6"   // SPMP address register 6
+mapping clause csr_name_map = 0x1B7  <-> "spmpaddr7"   // SPMP address register 7
+mapping clause csr_name_map = 0x1B8  <-> "spmpaddr8"   // SPMP address register 8
+mapping clause csr_name_map = 0x1B9  <-> "spmpaddr9"   // SPMP address register 9
+mapping clause csr_name_map = 0x1BA  <-> "spmpaddr10"  // SPMP address register 10
+mapping clause csr_name_map = 0x1BB  <-> "spmpaddr11"  // SPMP address register 11
+mapping clause csr_name_map = 0x1BC  <-> "spmpaddr12"  // SPMP address register 12
+mapping clause csr_name_map = 0x1BD  <-> "spmpaddr13"  // SPMP address register 13
+mapping clause csr_name_map = 0x1BE  <-> "spmpaddr14"  // SPMP address register 14
+mapping clause csr_name_map = 0x1BF  <-> "spmpaddr15"  // SPMP address register 15
+mapping clause csr_name_map = 0x1C0  <-> "spmpaddr16"  // SPMP address register 16
+mapping clause csr_name_map = 0x1C1  <-> "spmpaddr17"  // SPMP address register 17
+mapping clause csr_name_map = 0x1C2  <-> "spmpaddr18"  // SPMP address register 18
+mapping clause csr_name_map = 0x1C3  <-> "spmpaddr19"  // SPMP address register 19
+mapping clause csr_name_map = 0x1C4  <-> "spmpaddr20"  // SPMP address register 20
+mapping clause csr_name_map = 0x1C5  <-> "spmpaddr21"  // SPMP address register 21
+mapping clause csr_name_map = 0x1C6  <-> "spmpaddr22"  // SPMP address register 22
+mapping clause csr_name_map = 0x1C7  <-> "spmpaddr23"  // SPMP address register 23
+mapping clause csr_name_map = 0x1C8  <-> "spmpaddr24"  // SPMP address register 24
+mapping clause csr_name_map = 0x1C9  <-> "spmpaddr25"  // SPMP address register 25
+mapping clause csr_name_map = 0x1CA  <-> "spmpaddr26"  // SPMP address register 26
+mapping clause csr_name_map = 0x1CB  <-> "spmpaddr27"
+mapping clause csr_name_map = 0x1CC  <-> "spmpaddr28"
+mapping clause csr_name_map = 0x1CD  <-> "spmpaddr29"
+mapping clause csr_name_map = 0x1CE  <-> "spmpaddr30"
+mapping clause csr_name_map = 0x1CF  <-> "spmpaddr31"
+mapping clause csr_name_map = 0x1D0  <-> "spmpaddr32"
+mapping clause csr_name_map = 0x1D1  <-> "spmpaddr33"
+mapping clause csr_name_map = 0x1D2  <-> "spmpaddr34"
+mapping clause csr_name_map = 0x1D3  <-> "spmpaddr35"
+mapping clause csr_name_map = 0x1D4  <-> "spmpaddr36"
+mapping clause csr_name_map = 0x1D5  <-> "spmpaddr37"
+mapping clause csr_name_map = 0x1D6  <-> "spmpaddr38"
+mapping clause csr_name_map = 0x1D7  <-> "spmpaddr39"
+mapping clause csr_name_map = 0x1D8  <-> "spmpaddr40"
+mapping clause csr_name_map = 0x1D9  <-> "spmpaddr41"
+mapping clause csr_name_map = 0x1DA  <-> "spmpaddr42"
+mapping clause csr_name_map = 0x1DB  <-> "spmpaddr43"
+mapping clause csr_name_map = 0x1DC  <-> "spmpaddr44"
+mapping clause csr_name_map = 0x1DD  <-> "spmpaddr45"
+mapping clause csr_name_map = 0x1DE  <-> "spmpaddr46"
+mapping clause csr_name_map = 0x1DF  <-> "spmpaddr47"
+mapping clause csr_name_map = 0x1E0  <-> "spmpaddr48"
+mapping clause csr_name_map = 0x1E1  <-> "spmpaddr49"
+mapping clause csr_name_map = 0x1E2  <-> "spmpaddr50"
+mapping clause csr_name_map = 0x1E3  <-> "spmpaddr51"
+mapping clause csr_name_map = 0x1E4  <-> "spmpaddr52"
+mapping clause csr_name_map = 0x1E5  <-> "spmpaddr53"
+mapping clause csr_name_map = 0x1E6  <-> "spmpaddr54"
+mapping clause csr_name_map = 0x1E7  <-> "spmpaddr55"
+mapping clause csr_name_map = 0x1E8  <-> "spmpaddr56"
+mapping clause csr_name_map = 0x1E9  <-> "spmpaddr57"
+mapping clause csr_name_map = 0x1EA  <-> "spmpaddr58"
+mapping clause csr_name_map = 0x1EB  <-> "spmpaddr59"
+mapping clause csr_name_map = 0x1EC  <-> "spmpaddr60"
+mapping clause csr_name_map = 0x1ED  <-> "spmpaddr61"
+mapping clause csr_name_map = 0x1EE  <-> "spmpaddr62"
+mapping clause csr_name_map = 0x1EF  <-> "spmpaddr63"
+
 /* SPMP configuration entries */
 
 /* Reuse PmpAddrMatchType */
@@ -24,352 +159,155 @@ function spmpAddrMatchType_to_bits(bs) = {
 }
 
 bitfield Spmpcfg_ent : bits(8) = {
-  S : 7,        /* S-mode */
-  A : 4 .. 3,   /* address match type, encoded as above */
+  L : 7,        /* Lock bit - prevents further modifications when set ( Section 2.2) */
+  S : 6,        /* S-mode/U-mode shared permission management ( Section 2.3) */
+              /* bit[5]: Reserved (WPRI - Write Preserve, Read Ignore) */
+  A : 4 .. 3,   /* Address matching mode (OFF/TOR/NA4/NAPOT) ( Section 2.2) */
 
-  /* permissions */
-  X : 2,        /* execute */
-  W : 1,        /* write */
-  R : 0         /* read */
+  /* Memory access permissions ( Section 2.2) */
+  X : 2,        /* Execute permission */
+  W : 1,        /* Write permission */
+  R : 0         /* Read permission */
 }
 
-register spmp0cfg  : Spmpcfg_ent
-register spmp1cfg  : Spmpcfg_ent
-register spmp2cfg  : Spmpcfg_ent
-register spmp3cfg  : Spmpcfg_ent
-register spmp4cfg  : Spmpcfg_ent
-register spmp5cfg  : Spmpcfg_ent
-register spmp6cfg  : Spmpcfg_ent
-register spmp7cfg  : Spmpcfg_ent
-register spmp8cfg  : Spmpcfg_ent
-register spmp9cfg  : Spmpcfg_ent
-register spmp10cfg : Spmpcfg_ent
-register spmp11cfg : Spmpcfg_ent
-register spmp12cfg : Spmpcfg_ent
-register spmp13cfg : Spmpcfg_ent
-register spmp14cfg : Spmpcfg_ent
-register spmp15cfg : Spmpcfg_ent
-register spmp16cfg : Spmpcfg_ent
-register spmp17cfg : Spmpcfg_ent
-register spmp18cfg : Spmpcfg_ent
-register spmp19cfg : Spmpcfg_ent
-register spmp20cfg : Spmpcfg_ent
-register spmp21cfg : Spmpcfg_ent
-register spmp22cfg : Spmpcfg_ent
-register spmp23cfg : Spmpcfg_ent
-register spmp24cfg : Spmpcfg_ent
-register spmp25cfg : Spmpcfg_ent
-register spmp26cfg : Spmpcfg_ent
-register spmp27cfg : Spmpcfg_ent
-register spmp28cfg : Spmpcfg_ent
-register spmp29cfg : Spmpcfg_ent
-register spmp30cfg : Spmpcfg_ent
-register spmp31cfg : Spmpcfg_ent
-register spmp32cfg : Spmpcfg_ent
-register spmp33cfg : Spmpcfg_ent
-register spmp34cfg : Spmpcfg_ent
-register spmp35cfg : Spmpcfg_ent
-register spmp36cfg : Spmpcfg_ent
-register spmp37cfg : Spmpcfg_ent
-register spmp38cfg : Spmpcfg_ent
-register spmp39cfg : Spmpcfg_ent
-register spmp40cfg : Spmpcfg_ent
-register spmp41cfg : Spmpcfg_ent
-register spmp42cfg : Spmpcfg_ent
-register spmp43cfg : Spmpcfg_ent
-register spmp44cfg : Spmpcfg_ent
-register spmp45cfg : Spmpcfg_ent
-register spmp46cfg : Spmpcfg_ent
-register spmp47cfg : Spmpcfg_ent
-register spmp48cfg : Spmpcfg_ent
-register spmp49cfg : Spmpcfg_ent
-register spmp50cfg : Spmpcfg_ent
-register spmp51cfg : Spmpcfg_ent
-register spmp52cfg : Spmpcfg_ent
-register spmp53cfg : Spmpcfg_ent
-register spmp54cfg : Spmpcfg_ent
-register spmp55cfg : Spmpcfg_ent
-register spmp56cfg : Spmpcfg_ent
-register spmp57cfg : Spmpcfg_ent
-register spmp58cfg : Spmpcfg_ent
-register spmp59cfg : Spmpcfg_ent
-register spmp60cfg : Spmpcfg_ent
-register spmp61cfg : Spmpcfg_ent
-register spmp62cfg : Spmpcfg_ent
-register spmp63cfg : Spmpcfg_ent
+register spmpcfg_n : vector(64, Spmpcfg_ent)
+register spmpaddr_n : vector(64, xlenbits)
 
-/* SPMP address configuration */
-
-register spmpaddr0  : xlenbits
-register spmpaddr1  : xlenbits
-register spmpaddr2  : xlenbits
-register spmpaddr3  : xlenbits
-register spmpaddr4  : xlenbits
-register spmpaddr5  : xlenbits
-register spmpaddr6  : xlenbits
-register spmpaddr7  : xlenbits
-register spmpaddr8  : xlenbits
-register spmpaddr9  : xlenbits
-register spmpaddr10 : xlenbits
-register spmpaddr11 : xlenbits
-register spmpaddr12 : xlenbits
-register spmpaddr13 : xlenbits
-register spmpaddr14 : xlenbits
-register spmpaddr15 : xlenbits
-register spmpaddr16 : xlenbits
-register spmpaddr17 : xlenbits
-register spmpaddr18 : xlenbits
-register spmpaddr19 : xlenbits
-register spmpaddr20 : xlenbits
-register spmpaddr21 : xlenbits
-register spmpaddr22 : xlenbits
-register spmpaddr23 : xlenbits
-register spmpaddr24 : xlenbits
-register spmpaddr25 : xlenbits
-register spmpaddr26 : xlenbits
-register spmpaddr27 : xlenbits
-register spmpaddr28 : xlenbits
-register spmpaddr29 : xlenbits
-register spmpaddr30 : xlenbits
-register spmpaddr31 : xlenbits
-register spmpaddr32 : xlenbits
-register spmpaddr33 : xlenbits
-register spmpaddr34 : xlenbits
-register spmpaddr35 : xlenbits
-register spmpaddr36 : xlenbits
-register spmpaddr37 : xlenbits
-register spmpaddr38 : xlenbits
-register spmpaddr39 : xlenbits
-register spmpaddr40 : xlenbits
-register spmpaddr41 : xlenbits
-register spmpaddr42 : xlenbits
-register spmpaddr43 : xlenbits
-register spmpaddr44 : xlenbits
-register spmpaddr45 : xlenbits
-register spmpaddr46 : xlenbits
-register spmpaddr47 : xlenbits
-register spmpaddr48 : xlenbits
-register spmpaddr49 : xlenbits
-register spmpaddr50 : xlenbits
-register spmpaddr51 : xlenbits
-register spmpaddr52 : xlenbits
-register spmpaddr53 : xlenbits
-register spmpaddr54 : xlenbits
-register spmpaddr55 : xlenbits
-register spmpaddr56 : xlenbits
-register spmpaddr57 : xlenbits
-register spmpaddr58 : xlenbits
-register spmpaddr59 : xlenbits
-register spmpaddr60 : xlenbits
-register spmpaddr61 : xlenbits
-register spmpaddr62 : xlenbits
-register spmpaddr63 : xlenbits
 
 /* Packing and unpacking spmpcfg regs for xlen-width accesses */
 
-val spmpReadCfgReg : forall 'n, 0 <= 'n < 16 . (atom('n)) -> xlenbits effect {rreg}
-function spmpReadCfgReg(n) = {
-  if   sizeof(xlen) == 32
-  then match n {
-         0  => append(spmp3cfg.bits(),  append(spmp2cfg.bits(),  append(spmp1cfg.bits(),  spmp0cfg.bits()))),
-         1  => append(spmp7cfg.bits(),  append(spmp6cfg.bits(),  append(spmp5cfg.bits(),  spmp4cfg.bits()))),
-         2  => append(spmp11cfg.bits(), append(spmp10cfg.bits(), append(spmp9cfg.bits(),  spmp8cfg.bits()))),
-         3  => append(spmp15cfg.bits(), append(spmp14cfg.bits(), append(spmp13cfg.bits(), spmp12cfg.bits()))),
-         4  => append(spmp19cfg.bits(), append(spmp18cfg.bits(), append(spmp17cfg.bits(), spmp16cfg.bits()))),
-         5  => append(spmp23cfg.bits(), append(spmp22cfg.bits(), append(spmp21cfg.bits(), spmp20cfg.bits()))),
-         6  => append(spmp27cfg.bits(), append(spmp26cfg.bits(), append(spmp25cfg.bits(), spmp24cfg.bits()))),
-         7  => append(spmp31cfg.bits(), append(spmp30cfg.bits(), append(spmp29cfg.bits(), spmp28cfg.bits()))),
-         8  => append(spmp35cfg.bits(), append(spmp34cfg.bits(), append(spmp33cfg.bits(), spmp32cfg.bits()))),
-         9  => append(spmp39cfg.bits(), append(spmp38cfg.bits(), append(spmp37cfg.bits(), spmp36cfg.bits()))),
-         10 => append(spmp43cfg.bits(), append(spmp42cfg.bits(), append(spmp41cfg.bits(), spmp40cfg.bits()))),
-         11 => append(spmp47cfg.bits(), append(spmp46cfg.bits(), append(spmp45cfg.bits(), spmp44cfg.bits()))),
-         12 => append(spmp51cfg.bits(), append(spmp50cfg.bits(), append(spmp49cfg.bits(), spmp48cfg.bits()))),
-         13 => append(spmp55cfg.bits(), append(spmp54cfg.bits(), append(spmp53cfg.bits(), spmp52cfg.bits()))),
-         14 => append(spmp59cfg.bits(), append(spmp58cfg.bits(), append(spmp57cfg.bits(), spmp56cfg.bits()))),
-         15 => append(spmp63cfg.bits(), append(spmp62cfg.bits(), append(spmp61cfg.bits(), spmp60cfg.bits())))
-       }
-  else match n { //  sizeof(xlen) == 64
-         0  => append(spmp7cfg.bits(),  append(spmp6cfg.bits(),  append(spmp5cfg.bits(),  append(spmp4cfg.bits(),  append(spmp3cfg.bits(),  append(spmp2cfg.bits(),  append(spmp1cfg.bits(),  spmp0cfg.bits()))))))),
-         2  => append(spmp15cfg.bits(), append(spmp14cfg.bits(), append(spmp13cfg.bits(), append(spmp12cfg.bits(), append(spmp11cfg.bits(), append(spmp10cfg.bits(), append(spmp9cfg.bits(),  spmp8cfg.bits()))))))),
-         4  => append(spmp23cfg.bits(), append(spmp22cfg.bits(), append(spmp21cfg.bits(), append(spmp20cfg.bits(), append(spmp19cfg.bits(), append(spmp18cfg.bits(), append(spmp17cfg.bits(), spmp16cfg.bits()))))))),
-         6  => append(spmp31cfg.bits(), append(spmp30cfg.bits(), append(spmp29cfg.bits(), append(spmp28cfg.bits(), append(spmp27cfg.bits(), append(spmp26cfg.bits(), append(spmp25cfg.bits(), spmp24cfg.bits()))))))),
-         8  => append(spmp39cfg.bits(), append(spmp38cfg.bits(), append(spmp37cfg.bits(), append(spmp36cfg.bits(), append(spmp35cfg.bits(), append(spmp34cfg.bits(), append(spmp33cfg.bits(), spmp32cfg.bits()))))))),
-         10 => append(spmp47cfg.bits(), append(spmp46cfg.bits(), append(spmp45cfg.bits(), append(spmp44cfg.bits(), append(spmp43cfg.bits(), append(spmp42cfg.bits(), append(spmp41cfg.bits(), spmp40cfg.bits()))))))),
-         12 => append(spmp55cfg.bits(), append(spmp54cfg.bits(), append(spmp53cfg.bits(), append(spmp52cfg.bits(), append(spmp51cfg.bits(), append(spmp50cfg.bits(), append(spmp49cfg.bits(), spmp48cfg.bits()))))))),
-         14 => append(spmp63cfg.bits(), append(spmp62cfg.bits(), append(spmp61cfg.bits(), append(spmp60cfg.bits(), append(spmp59cfg.bits(), append(spmp58cfg.bits(), append(spmp57cfg.bits(), spmp56cfg.bits())))))))
-       }
+function spmpReadCfgReg(n : range(0, 15)) -> xlenbits = {
+  if xlen == 32
+  then {
+    spmpcfg_n[n*4 + 3].bits @
+    spmpcfg_n[n*4 + 2].bits @
+    spmpcfg_n[n*4 + 1].bits @
+    spmpcfg_n[n*4 + 0].bits
+  }
+  else {
+    assert(n % 2 == 0, "Unexpected spmp config reg read");
+    spmpcfg_n[n*4 + 7].bits @
+    spmpcfg_n[n*4 + 6].bits @
+    spmpcfg_n[n*4 + 5].bits @
+    spmpcfg_n[n*4 + 4].bits @
+    spmpcfg_n[n*4 + 3].bits @
+    spmpcfg_n[n*4 + 2].bits @
+    spmpcfg_n[n*4 + 1].bits @
+    spmpcfg_n[n*4 + 0].bits
+  }
 }
 
-/* Helpers to handle S mode regions */
-// function mpuSmodeRegion(cfg: Spmpcfg_ent) -> bool =
-//    cfg.S() == 0b1
+/* Helpers to handle locked entries */
+function spmpLocked(cfg: Spmpcfg_ent) -> bool =
+   cfg[L] == 0b1
 
-function spmpWriteCfg(cfg: Spmpcfg_ent, v: bits(8)) -> Spmpcfg_ent =
-  Mk_Spmpcfg_ent(v & 0x9f)  // Bits 5 and 6 are zero.
+function spmpTORLocked(cfg: Spmpcfg_ent) -> bool =
+   (cfg[L] == 0b1) & (spmpAddrMatchType_of_bits(cfg[A]) == TOR)
 
-val spmpWriteCfgReg : forall 'n, 0 <= 'n < 16 . (atom('n), xlenbits) -> unit effect {rreg, wreg}
-function spmpWriteCfgReg(n, v) = {
-  if   sizeof(xlen) == 32
-  then match n {
-         0 => { spmp0cfg   = spmpWriteCfg(spmp0cfg,  v[7 ..0]);
-                spmp1cfg   = spmpWriteCfg(spmp1cfg,  v[15..8]);
-                spmp2cfg   = spmpWriteCfg(spmp2cfg,  v[23..16]);
-                spmp3cfg   = spmpWriteCfg(spmp3cfg,  v[31..24]);
-              },
-         1 => { spmp4cfg   = spmpWriteCfg(spmp4cfg,  v[7 ..0]);
-                spmp5cfg   = spmpWriteCfg(spmp5cfg,  v[15..8]);
-                spmp6cfg   = spmpWriteCfg(spmp6cfg,  v[23..16]);
-                spmp7cfg   = spmpWriteCfg(spmp7cfg,  v[31..24]);
-              },
-         2 => { spmp8cfg   = spmpWriteCfg(spmp8cfg,  v[7 ..0]);
-                spmp9cfg   = spmpWriteCfg(spmp9cfg,  v[15..8]);
-                spmp10cfg  = spmpWriteCfg(spmp10cfg, v[23..16]);
-                spmp11cfg  = spmpWriteCfg(spmp11cfg, v[31..24]);
-              },
-         3 => { spmp12cfg  = spmpWriteCfg(spmp12cfg, v[7 ..0]);
-                spmp13cfg  = spmpWriteCfg(spmp13cfg, v[15..8]);
-                spmp14cfg  = spmpWriteCfg(spmp14cfg, v[23..16]);
-                spmp15cfg  = spmpWriteCfg(spmp15cfg, v[31..24]);
-              },
-         4 => { spmp16cfg  = spmpWriteCfg(spmp16cfg, v[7 ..0]);
-                spmp17cfg  = spmpWriteCfg(spmp17cfg, v[15..8]);
-                spmp18cfg  = spmpWriteCfg(spmp18cfg, v[23..16]);
-                spmp19cfg  = spmpWriteCfg(spmp19cfg, v[31..24]);
-              },
-         5 => { spmp20cfg  = spmpWriteCfg(spmp20cfg, v[7 ..0]);
-                spmp21cfg  = spmpWriteCfg(spmp21cfg, v[15..8]);
-                spmp22cfg  = spmpWriteCfg(spmp22cfg, v[23..16]);
-                spmp23cfg  = spmpWriteCfg(spmp23cfg, v[31..24]);
-              },
-         6 => { spmp24cfg  = spmpWriteCfg(spmp24cfg, v[7 ..0]);
-                spmp25cfg  = spmpWriteCfg(spmp25cfg, v[15..8]);
-                spmp26cfg  = spmpWriteCfg(spmp26cfg, v[23..16]);
-                spmp27cfg  = spmpWriteCfg(spmp27cfg, v[31..24]);
-              },
-         7 => { spmp28cfg  = spmpWriteCfg(spmp28cfg, v[7 ..0]);
-                spmp29cfg  = spmpWriteCfg(spmp29cfg, v[15..8]);
-                spmp30cfg  = spmpWriteCfg(spmp30cfg, v[23..16]);
-                spmp31cfg  = spmpWriteCfg(spmp31cfg, v[31..24]);
-              },
-         8 => { spmp32cfg  = spmpWriteCfg(spmp32cfg, v[7 ..0]);
-                spmp33cfg  = spmpWriteCfg(spmp33cfg, v[15..8]);
-                spmp34cfg  = spmpWriteCfg(spmp34cfg, v[23..16]);
-                spmp35cfg  = spmpWriteCfg(spmp35cfg, v[31..24]);
-              },
-         9 => { spmp36cfg  = spmpWriteCfg(spmp36cfg, v[7 ..0]);
-                spmp37cfg  = spmpWriteCfg(spmp37cfg, v[15..8]);
-                spmp38cfg  = spmpWriteCfg(spmp38cfg, v[23..16]);
-                spmp39cfg  = spmpWriteCfg(spmp39cfg, v[31..24]);
-              },
-         10 => { spmp40cfg = spmpWriteCfg(spmp40cfg, v[7 ..0]);
-                 spmp41cfg = spmpWriteCfg(spmp41cfg, v[15..8]);
-                 spmp42cfg = spmpWriteCfg(spmp42cfg, v[23..16]);
-                 spmp43cfg = spmpWriteCfg(spmp43cfg, v[31..24]);
-              },
-         11 => { spmp44cfg = spmpWriteCfg(spmp44cfg, v[7 ..0]);
-                 spmp45cfg = spmpWriteCfg(spmp45cfg, v[15..8]);
-                 spmp46cfg = spmpWriteCfg(spmp46cfg, v[23..16]);
-                 spmp47cfg = spmpWriteCfg(spmp47cfg, v[31..24]);
-              },
-         12 => { spmp48cfg = spmpWriteCfg(spmp48cfg, v[7 ..0]);
-                 spmp49cfg = spmpWriteCfg(spmp49cfg, v[15..8]);
-                 spmp50cfg = spmpWriteCfg(spmp50cfg, v[23..16]);
-                 spmp51cfg = spmpWriteCfg(spmp51cfg, v[31..24]);
-              },
-         13 => { spmp52cfg = spmpWriteCfg(spmp52cfg, v[7 ..0]);
-                 spmp53cfg = spmpWriteCfg(spmp53cfg, v[15..8]);
-                 spmp54cfg = spmpWriteCfg(spmp54cfg, v[23..16]);
-                 spmp55cfg = spmpWriteCfg(spmp55cfg, v[31..24]);
-              },
-         14 => { spmp56cfg = spmpWriteCfg(spmp56cfg, v[7 ..0]);
-                 spmp57cfg = spmpWriteCfg(spmp57cfg, v[15..8]);
-                 spmp58cfg = spmpWriteCfg(spmp58cfg, v[23..16]);
-                 spmp59cfg = spmpWriteCfg(spmp59cfg, v[31..24]);
-              },
-         15 => { spmp60cfg = spmpWriteCfg(spmp60cfg, v[7 ..0]);
-                 spmp61cfg = spmpWriteCfg(spmp61cfg, v[15..8]);
-                 spmp62cfg = spmpWriteCfg(spmp62cfg, v[23..16]);
-                 spmp63cfg = spmpWriteCfg(spmp63cfg, v[31..24]);
-              }
-       }
-  else if sizeof(xlen) == 64
-  then match n {
-         0 => { spmp0cfg  = spmpWriteCfg(spmp0cfg,  v[7 ..0]);
-                spmp1cfg  = spmpWriteCfg(spmp1cfg,  v[15..8]);
-                spmp2cfg  = spmpWriteCfg(spmp2cfg,  v[23..16]);
-                spmp3cfg  = spmpWriteCfg(spmp3cfg,  v[31..24]);
-                spmp4cfg  = spmpWriteCfg(spmp4cfg,  v[39..32]);
-                spmp5cfg  = spmpWriteCfg(spmp5cfg,  v[47..40]);
-                spmp6cfg  = spmpWriteCfg(spmp6cfg,  v[55..48]);
-                spmp7cfg  = spmpWriteCfg(spmp7cfg,  v[63..56])
-              },
-         2 => { spmp8cfg  = spmpWriteCfg(spmp8cfg,  v[7 ..0]);
-                spmp9cfg  = spmpWriteCfg(spmp9cfg,  v[15..8]);
-                spmp10cfg = spmpWriteCfg(spmp10cfg, v[23..16]);
-                spmp11cfg = spmpWriteCfg(spmp11cfg, v[31..24]);
-                spmp12cfg = spmpWriteCfg(spmp12cfg, v[39..32]);
-                spmp13cfg = spmpWriteCfg(spmp13cfg, v[47..40]);
-                spmp14cfg = spmpWriteCfg(spmp14cfg, v[55..48]);
-                spmp15cfg = spmpWriteCfg(spmp15cfg, v[63..56])
-              },
-         4 => { spmp16cfg = spmpWriteCfg(spmp16cfg, v[7 ..0]);
-                spmp17cfg = spmpWriteCfg(spmp17cfg, v[15..8]);
-                spmp18cfg = spmpWriteCfg(spmp18cfg, v[23..16]);
-                spmp19cfg = spmpWriteCfg(spmp19cfg, v[31..24]);
-                spmp20cfg = spmpWriteCfg(spmp20cfg, v[39..32]);
-                spmp21cfg = spmpWriteCfg(spmp21cfg, v[47..40]);
-                spmp22cfg = spmpWriteCfg(spmp22cfg, v[55..48]);
-                spmp23cfg = spmpWriteCfg(spmp23cfg, v[63..56])
-              },
-         6 => { spmp24cfg = spmpWriteCfg(spmp24cfg, v[7 ..0]);
-                spmp25cfg = spmpWriteCfg(spmp25cfg, v[15..8]);
-                spmp26cfg = spmpWriteCfg(spmp26cfg, v[23..16]);
-                spmp27cfg = spmpWriteCfg(spmp27cfg, v[31..24]);
-                spmp28cfg = spmpWriteCfg(spmp28cfg, v[39..32]);
-                spmp29cfg = spmpWriteCfg(spmp29cfg, v[47..40]);
-                spmp30cfg = spmpWriteCfg(spmp30cfg, v[55..48]);
-                spmp31cfg = spmpWriteCfg(spmp31cfg, v[63..56])
-              },
-         8 => { spmp32cfg = spmpWriteCfg(spmp32cfg, v[7 ..0]);
-                spmp33cfg = spmpWriteCfg(spmp33cfg, v[15..8]);
-                spmp34cfg = spmpWriteCfg(spmp34cfg, v[23..16]);
-                spmp35cfg = spmpWriteCfg(spmp35cfg, v[31..24]);
-                spmp36cfg = spmpWriteCfg(spmp36cfg, v[39..32]);
-                spmp37cfg = spmpWriteCfg(spmp37cfg, v[47..40]);
-                spmp38cfg = spmpWriteCfg(spmp38cfg, v[55..48]);
-                spmp39cfg = spmpWriteCfg(spmp39cfg, v[63..56])
-              },
-         10 => { spmp40cfg = spmpWriteCfg(spmp40cfg, v[7 ..0]);
-                spmp41cfg  = spmpWriteCfg(spmp41cfg, v[15..8]);
-                spmp42cfg  = spmpWriteCfg(spmp42cfg, v[23..16]);
-                spmp43cfg  = spmpWriteCfg(spmp43cfg, v[31..24]);
-                spmp44cfg  = spmpWriteCfg(spmp44cfg, v[39..32]);
-                spmp45cfg  = spmpWriteCfg(spmp45cfg, v[47..40]);
-                spmp46cfg  = spmpWriteCfg(spmp46cfg, v[55..48]);
-                spmp47cfg  = spmpWriteCfg(spmp47cfg, v[63..56])
-              },
-         12 => { spmp48cfg = spmpWriteCfg(spmp48cfg, v[7 ..0]);
-                 spmp49cfg = spmpWriteCfg(spmp49cfg, v[15..8]);
-                 spmp50cfg = spmpWriteCfg(spmp50cfg, v[23..16]);
-                 spmp51cfg = spmpWriteCfg(spmp51cfg, v[31..24]);
-                 spmp52cfg = spmpWriteCfg(spmp52cfg, v[39..32]);
-                 spmp53cfg = spmpWriteCfg(spmp53cfg, v[47..40]);
-                 spmp54cfg = spmpWriteCfg(spmp54cfg, v[55..48]);
-                 spmp55cfg = spmpWriteCfg(spmp55cfg, v[63..56])
-              },
-         14 => { spmp56cfg = spmpWriteCfg(spmp56cfg, v[7 ..0]);
-                 spmp57cfg = spmpWriteCfg(spmp57cfg, v[15..8]);
-                 spmp58cfg = spmpWriteCfg(spmp58cfg, v[23..16]);
-                 spmp59cfg = spmpWriteCfg(spmp59cfg, v[31..24]);
-                 spmp60cfg = spmpWriteCfg(spmp60cfg, v[39..32]);
-                 spmp61cfg = spmpWriteCfg(spmp61cfg, v[47..40]);
-                 spmp62cfg = spmpWriteCfg(spmp62cfg, v[55..48]);
-                 spmp63cfg = spmpWriteCfg(spmp63cfg, v[63..56])
-              }
-       }
+/* Check if SPMP entry write is allowed based on privilege level and lock status.
+ * 
+ * L bit access control rules:
+ * - M-mode: Can always read/write L bit and modify locked entries
+ * - S-mode: Cannot modify locked entries (writes are ignored when L=1)
+ * - The L bit is only accessible to M-mode for writes
+ */
+function spmpWriteCfg(n: range(0, 63), cfg: Spmpcfg_ent, v: bits(8), priv: Privilege) -> Spmpcfg_ent = {
+  // Check if entry is locked and current privilege
+  let is_locked = spmpLocked(cfg);
+  let is_machine_mode = (priv == Machine);
+  
+  // If locked and not in M-mode, ignore write completely
+  if is_locked & not(is_machine_mode) then cfg
+  else {
+    // Create new configuration from input value
+    // Preserve reserved bit[5] (WPRI) and allow modification of other fields  
+    let new_cfg = Mk_Spmpcfg_ent((v & 0xDF) | (cfg.bits & 0x20));
+    
+    // L bit access control: Only M-mode can modify L bit
+    let new_cfg = if not(is_machine_mode) then [new_cfg with L = cfg[L]] else new_cfg;
+
+    // "The R, W, and X fields form a collective WARL field for which the combinations with R=0 and W=1 are reserved."
+    // In this implementation if R=0 and W=1 then R, W and X are all set to 0.
+    // This is the least risky option from a security perspective.
+    let new_cfg = if new_cfg[W] == 0b1 & new_cfg[R] == 0b0 then [new_cfg with X = 0b0, W = 0b0, R = 0b0] else new_cfg;
+
+    new_cfg
+  }
 }
 
-function spmpWriteAddr(reg: xlenbits, v: xlenbits) -> xlenbits =
-  if   sizeof(xlen) == 32
-  then { v }
-  else { EXTZ(v[53..0]) }
+function spmpWriteCfgReg(n : range(0, 15), v : xlenbits) -> unit = {
+  if xlen == 32
+  then {
+    foreach (i from 0 to 3) {
+      let idx = n*4 + i;
+      spmpcfg_n[idx] = spmpWriteCfg(idx, spmpcfg_n[idx], v[8*i+7 .. 8*i], cur_privilege);
+    }
+  }
+  else {
+    assert(n % 2 == 0, "Unexpected spmp config reg write");
+    foreach (i from 0 to 7) {
+      let idx = n*4 + i;
+      spmpcfg_n[idx] = spmpWriteCfg(idx, spmpcfg_n[idx], v[8*i+7 .. 8*i], cur_privilege);
+    }
+  }
+}
+
+/* SPMP address register write with privilege-aware locking.
+ * 
+ * Address register write rules:
+ * - M-mode: Can always write to address registers, even for locked entries
+ * - S-mode: Cannot write to address registers of locked entries
+ * - S-mode: Cannot write to spmpaddr[i-1] if spmp[i]cfg is locked and A=TOR
+ */
+function spmpWriteAddr(locked: bool, tor_locked: bool, reg: xlenbits, v: xlenbits, priv: Privilege) -> xlenbits = {
+  let is_machine_mode = (priv == Machine);
+  
+  if xlen == 32
+  then { 
+    if (locked | tor_locked) & not(is_machine_mode) then reg else v 
+  }
+  else { 
+    if (locked | tor_locked) & not(is_machine_mode) then reg else zero_extend(v[53..0]) 
+  }
+}
+
+function spmpWriteAddrReg(n : range(0, 63), v : xlenbits) -> unit = {
+  // Get current privilege for L bit access control
+  let priv = cur_privilege;
+  
+  spmpaddr_n[n] = spmpWriteAddr(
+    spmpLocked(spmpcfg_n[n]),
+    if n + 1 < 64 then spmpTORLocked(spmpcfg_n[n + 1]) else false,
+    spmpaddr_n[n],
+    v,
+    priv
+  );
+}
+
+/* SPMP CSRs */
+
+// spmpcfgN
+function clause is_CSR_defined(0x1A) @ idx : bits(4) = sys_spmp_enabled & (idx[0] == bitzero | xlen == 32)
+function clause read_CSR(0x1A @ idx : bits(4) if idx[0] == bitzero | xlen == 32) = spmpReadCfgReg(unsigned(idx))
+function clause write_CSR((0x1A @ idx : bits(4), value) if idx[0] == bitzero | xlen == 32) = {
+  let idx = unsigned(idx);
+  spmpWriteCfgReg(idx, value);
+  spmpReadCfgReg(idx)
+}
+
+// spmpaddrN. Unfortunately the SPMP index does not nicely align with the CSR index bits.
+// TODO: It needs to be modified to indirect access
+function clause is_CSR_defined(0x1B) @ idx : bits(4) = sys_spmp_enabled
+function clause is_CSR_defined(0x1C) @ idx : bits(4) = sys_spmp_enabled
+function clause is_CSR_defined(0x1D) @ idx : bits(4) = sys_spmp_enabled
+function clause is_CSR_defined(0x1E) @ idx : bits(4) = sys_spmp_enabled
+
+function clause read_CSR(0x1B @ idx : bits(4)) = spmpaddr_n[unsigned(0b00 @ idx)]
+function clause read_CSR(0x1C @ idx : bits(4)) = spmpaddr_n[unsigned(0b01 @ idx)]
+function clause read_CSR(0x1D @ idx : bits(4)) = spmpaddr_n[unsigned(0b10 @ idx)]
+function clause read_CSR(0x1E @ idx : bits(4)) = spmpaddr_n[unsigned(0b11 @ idx)]
+
+function clause write_CSR(0x1B @ idx : bits(4), value) = { let idx = unsigned(0b00 @ idx); spmpWriteAddrReg(idx, value); spmpaddr_n[idx] }
+function clause write_CSR(0x1C @ idx : bits(4), value) = { let idx = unsigned(0b01 @ idx); spmpWriteAddrReg(idx, value); spmpaddr_n[idx] }
+function clause write_CSR(0x1D @ idx : bits(4), value) = { let idx = unsigned(0b10 @ idx); spmpWriteAddrReg(idx, value); spmpaddr_n[idx] }
+function clause write_CSR(0x1E @ idx : bits(4), value) = { let idx = unsigned(0b11 @ idx); spmpWriteAddrReg(idx, value); spmpaddr_n[idx] }

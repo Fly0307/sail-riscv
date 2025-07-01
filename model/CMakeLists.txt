@@ -154,6 +154,9 @@ foreach (variant IN ITEMS "" "smt" "rocq" "rmem" "lean" "lem" "isabelle")
         "riscv_sys_regs.sail"
         "riscv_pmp_regs.sail"
         "riscv_pmp_control.sail"
+        "riscv_spmp_regs.sail"
+        "riscv_spmp_utils.sail"
+        "riscv_spmp_control.sail"
         "riscv_ext_regs.sail"
         ${sail_check_srcs}
         "riscv_vreg_type.sail"

@@ -1,448 +1,542 @@
-/* address ranges */
-/* [min, max) of the matching range. */
+/*=======================================================================================*/
+/*  SPMP (Supervisor Mode Physical Memory Protection) Address Range Calculation        */
+/*                                                                                       */
+/*  This module implements the SPMP address matching algorithms as specified in        */
+/*  . SPMP operates on physical addresses after address translation    */
+/*  and provides memory protection for supervisor mode software.                        */
+/*=======================================================================================*/
+
+/* SPMP address range type: None indicates no match, Some((min, max)) indicates
+ * the byte-addressed range [min, max) that matches this SPMP entry.
+ * Note: This follows the same semantics as PMP but operates at supervisor privilege. */
 type spmp_addr_range = option((xlenbits, xlenbits))
 
+/* Calculate the address range matched by an SPMP entry.
+ * 
+ * Parameters:
+ *   cfg: SPMP configuration entry containing address matching type in A field
+ *   spmpaddr: Current SPMP address register value (word-addressed, bits [XLEN-1:2])
+ *   prev_spmpaddr: Previous SPMP address register (for TOR mode)
+ * 
+ * Returns: Address range [min, max) in bytes, or None if no addresses match
+ * 
+ * Address Matching Types ( Section 3.2):
+ *   - OFF: Entry is disabled, matches no addresses
+ *   - TOR: Top-of-Range, matches [prev_spmpaddr*4, spmpaddr*4)
+ *   - NA4: Naturally aligned 4-byte region
+ *   - NAPOT: Naturally aligned power-of-two region */
 function spmpAddrRange(cfg: Spmpcfg_ent, spmpaddr: xlenbits, prev_spmpaddr: xlenbits) -> spmp_addr_range = {
-  match spmpAddrMatchType_of_bits(cfg.A()) {
+  match spmpAddrMatchType_of_bits(cfg[A]) {
+    /* OFF: Entry disabled - no address matching ( Section 3.2.1) */
     OFF   => None(),
-    TOR   => { Some ((prev_spmpaddr << 2, spmpaddr << 2)) },
-    NA4   => { let lo = spmpaddr << 2;
-               Some((lo, lo + 4))
-             },
-    NAPOT => { let mask = spmpaddr ^ (spmpaddr + 1);  // generate 1s in signifying bits
-               let lo   = spmpaddr & (~ (mask));
-               let len  = mask + 1;
-               Some((lo << 2, (lo + len) << 2))
-             }
+    
+    /* TOR: Top-of-Range addressing ( Section 3.2.2)
+     * Matches addresses in range [prev_spmpaddr*4, spmpaddr*4)
+     * If prev_spmpaddr >= spmpaddr, no addresses match (invalid range) */
+    TOR   => {
+      // Per spec: "If spmpaddr[i-1] >= spmpaddr[i] and spmpcfg[i].A=TOR, then SPMP entry i matches no addresses."
+      if prev_spmpaddr >=_u spmpaddr
+      then None()  // Invalid range
+      else Some((prev_spmpaddr << 2, spmpaddr << 2))  // Convert to byte addresses
+    },
+    
+    /* NA4: Naturally Aligned 4-byte region ( Section 3.2.3)
+     * Matches exactly 4 bytes starting at spmpaddr*4 */
+    NA4   => { 
+      let lo = spmpaddr << 2;  // Convert word address to byte address
+      Some((lo, lo + 4))       // 4-byte region
+    },
+    
+    /* NAPOT: Naturally Aligned Power-Of-Two region ( Section 3.2.4)
+     * Address encoding: spmpaddr = base | (size/8 - 1)
+     * Where trailing 1s in spmpaddr indicate the region size */
+    NAPOT => { 
+      // Generate mask to identify region size (follows PMP NAPOT algorithm)
+      let mask = spmpaddr ^ (spmpaddr + 1);  // XOR creates mask for trailing 1s
+      let lo   = spmpaddr & (~ (mask));      // Clear low bits to get aligned base
+      let len  = mask + 1;                   // Region size in words
+      
+      // Safety check: prevent address overflow in large regions
+      if lo + len <_u lo then None()         // Overflow detected
+      else Some((lo << 2, (lo + len) << 2))  // Convert to byte addresses
+    }
   }
 }
 
-/* permission checks */
+/*=======================================================================================*/
+/*  SPMP Permission Checking Functions                                                  */
+/*                                                                                       */
+/*  Implements the SPMP permission matrix                                                */
+/*  SPMP adds an S bit to distinguish supervisor and user accessible regions.           */
+/*=======================================================================================*/
+
+/* Basic R/W/X permission check without privilege considerations.
+ * This function only checks the fundamental permission bits in the SPMP entry.
+ * 
+ * Parameters:
+ *   ent: SPMP configuration entry with R/W/X permission bits
+ *   acc: Type of memory access (Read/Write/Execute/ReadWrite)
+ *   priv: Current privilege level (not used in basic check)
+ * 
+ * Returns: true if the basic permission bits allow the access type */
 val CheckRWX: (Spmpcfg_ent, AccessType(ext_access_type), Privilege) -> bool
 function CheckRWX(ent, acc, priv) = {
   match acc {
-    Read(_)      => ent.R() == 0b1,
-    Write(_)     => ent.W() == 0b1,
-    ReadWrite(_) => ent.R() == 0b1 & ent.W() == 0b1,
-    Execute()    => ent.X() == 0b1
+    Read(_)           => ent[R] == 0b1,  // Read permission required
+    Write(_)          => ent[W] == 0b1,  // Write permission required  
+    ReadWrite(_)      => ent[R] == 0b1 & ent[W] == 0b1,  // Both R&W required
+    InstructionFetch() => ent[X] == 0b1  // Execute permission required
   }
 }
 
-val spmpCheckRWX: (Spmpcfg_ent, AccessType(ext_access_type), Privilege) -> bool effect {rreg}
+/* SPMP privilege-aware permission check implementing the new permission matrix.
+ * 
+ * SPMP has three kinds of rules:
+ *   1. S-mode-only rules (S=1): Enforced on S-mode, denied on U-mode
+ *   2. U-mode-only rules (S=0, RW≠01): Enforced on U-mode, conditional on S-mode
+ *   3. Shared-Region rules (RW=01): Enforced on both modes with restrictions
+ * 
+ * Permission encoding:
+ *   - S-mode-only (S=1): Standard R/W/X permissions apply to S-mode only
+ *   - U-mode-only (S=0, RW≠01): Standard R/W/X permissions apply to U-mode,
+ *     S-mode access depends on mstatus.SUM (accessible via sstatus.SUM) for SMAP/SMEP
+ *   - Shared-Region (RW=01): Special encoding for shared access between modes
+ *   - Reserved (SRWX=1000): Reserved for future standard use
+ */
+val spmpCheckRWX: (Spmpcfg_ent, AccessType(ext_access_type), Privilege) -> bool
 function spmpCheckRWX(ent, acc, priv) = {
-  let do_sum : bool = mstatus.SUM() == 0b1;
-
-  match (ent.S(), ent.R(), ent.W(), ent.X()) {
-    (0b0, 0b0, 0b0, 0b0) => false,
-    (0b0, 0b0, 0b0, 0b1) => priv == User & CheckRWX(ent, acc, priv),
-    (0b0, 0b0, 0b1, 0b0) => (priv == User & acc == Read()) | (priv == Supervisor & acc != Execute()),
-    (0b0, 0b0, 0b1, 0b1) => acc != Execute(),
-    (0b0, 0b1, 0b0, 0b0) => (priv == User | (priv == Supervisor & do_sum)) & CheckRWX(ent, acc, priv),
-    (0b0, 0b1, 0b0, 0b1) => (priv == User | (priv == Supervisor & do_sum & acc != Execute())) & CheckRWX(ent, acc, priv),
-    (0b0, 0b1, 0b1, 0b0) => (priv == User | (priv == Supervisor & do_sum)) & CheckRWX(ent, acc, priv),
-    (0b0, 0b1, 0b1, 0b1) => (priv == User | (priv == Supervisor & do_sum & acc != Execute())) & CheckRWX(ent, acc, priv),
-    (0b1, 0b0, 0b0, 0b0) => false,
-    (0b1, 0b0, 0b0, 0b1) => priv == Supervisor & CheckRWX(ent, acc, priv),
-    (0b1, 0b0, 0b1, 0b0) => acc == Execute(),
-    (0b1, 0b0, 0b1, 0b1) => (priv == User & acc == Execute()) | (priv == Supervisor & acc != Write()),
-    (0b1, 0b1, 0b0, 0b0) => priv == Supervisor & CheckRWX(ent, acc, priv),
-    (0b1, 0b1, 0b0, 0b1) => priv == Supervisor & CheckRWX(ent, acc, priv),
-    (0b1, 0b1, 0b1, 0b0) => priv == Supervisor & CheckRWX(ent, acc, priv),
-    (0b1, 0b1, 0b1, 0b1) => acc == Read()
+  let do_sum : bool = mstatus[SUM] == 0b1;  // Check SUM bit in mstatus (accessible via sstatus)
+  
+  /* Check for reserved encoding SRWX=1000 */
+  if ent[S] == 0b1 & ent[R] == 0b0 & ent[W] == 0b0 & ent[X] == 0b0 then false
+  /* Check for Shared-Region encoding RW=01 */
+  else if ent[R] == 0b0 & ent[W] == 0b1 then {
+    /* Shared-Region rule: Both S-mode and U-mode can access with restrictions */
+    match (ent[S], priv, acc) {
+      /* S=0: Data sharing region (not executable) */
+      (0b0, Supervisor, _) => {
+        match acc {
+          Read(_) => true,           // S-mode has RW permission
+          Write(_) => true,
+          ReadWrite(_) => true,
+          InstructionFetch() => false // Not executable
+        }
+      },
+      (0b0, User, _) => {
+        match acc {
+          Read(_) => true,           // U-mode always has R permission
+          Write(_) => ent[X] == 0b1, // U-mode has W permission if X=1
+          ReadWrite(_) => ent[X] == 0b1,
+          InstructionFetch() => false // Not executable
+        }
+      },
+      
+      /* S=1: Code sharing region (not writable) */
+      (0b1, Supervisor, _) => {
+        match acc {
+          Read(_) => true,           // S-mode has RX permission
+          Write(_) => false,         // Not writable
+          ReadWrite(_) => false,
+          InstructionFetch() => true // Executable
+        }
+      },
+      (0b1, User, _) => {
+        match acc {
+          Read(_) => ent[X] == 0b1,  // U-mode has R permission if X=1
+          Write(_) => false,         // Not writable
+          ReadWrite(_) => false,
+          InstructionFetch() => if ent[X] == 0b1 then true else true  // Execute-only if X=0, RX if X=1
+        }
+      },
+      
+      (_, Machine, _) => true,       // Machine mode bypasses restrictions
+      _ => false
+    }
+  }
+  /* S-mode-only rule (S=1, RW≠01) */
+  else if ent[S] == 0b1 then {
+    match priv {
+      Supervisor => CheckRWX(ent, acc, priv),  // Standard R/W/X permissions for S-mode
+      User => false,                           // Denied on U-mode
+      Machine => true                          // Machine mode bypasses
+    }
+  }
+  /* U-mode-only rule (S=0, RW≠01) */
+  else {
+    match priv {
+      User => CheckRWX(ent, acc, priv),        // Standard R/W/X permissions for U-mode
+      Supervisor => {
+        /* S-mode access to U-mode region depends on mstatus.SUM (sstatus.SUM) */
+        match acc {
+          /* SMEP: S-mode cannot execute from U-mode pages regardless of SUM */
+          InstructionFetch() => false,
+          /* SMAP: S-mode data access depends on SUM bit */
+          _ => do_sum & CheckRWX(ent, acc, priv)
+        }
+      },
+      Machine => true                          // Machine mode bypasses
+    }
   }
 }
 
-// this needs to be called with the effective current privilege.
-val spmpCheckPerms: (Spmpcfg_ent, AccessType(ext_access_type), Privilege) -> bool effect {rreg}
+/* High-level SPMP permission check entry point.
+ * 
+ * Machine mode behavior ( Section 2.3):
+ *   - Machine mode bypasses all SPMP checks
+ *   - This follows the principle that machine mode has unrestricted access
+ *   - Only supervisor and user modes are subject to SPMP restrictions
+ * 
+ * Parameters:
+ *   ent: SPMP configuration entry to check against
+ *   acc: Memory access type being attempted
+ *   priv: Current effective privilege level
+ * 
+ * Returns: true if access should be permitted, false if denied */
+val spmpCheckPerms: (Spmpcfg_ent, AccessType(ext_access_type), Privilege) -> bool
 function spmpCheckPerms(ent, acc, priv) = {
   match priv {
+    /* Machine mode: Always bypass SPMP checks ( Section 2.3) */
     Machine => true,
+    /* Supervisor/User mode: Apply full SPMP permission matrix */
     _       => spmpCheckRWX(ent, acc, priv)
   }
 }
 
-/* matching logic */
+/*=======================================================================================*/
+/*  SPMP Address Matching Logic                                                         */
+/*                                                                                       */
+/*  Implements address range matching for SPMP entries. Unlike PMP, partial matches    */
+/*  are treated as violations per  Section 3.3.                        */
+/*=======================================================================================*/
 
+/* SPMP address matching result types */
 enum spmpAddrMatch = {SPMP_NoMatch, SPMP_PartialMatch, SPMP_Match}
 
-function spmpMatchAddr(addr: xlenbits, width: xlenbits, rng: spmp_addr_range) -> spmpAddrMatch = {
+/* Determine relationship between access range and SPMP protection range.
+ * 
+ * SPMP requires that memory accesses either:
+ *   1. Completely fall within a protected region (SPMP_Match)
+ *   2. Completely fall outside all protected regions (SPMP_NoMatch)
+ *   3. Partially overlap a region (SPMP_PartialMatch - this is a violation)
+ * 
+ * Per  Section 3.3: "If any byte of an access partially matches
+ * an SPMP entry, the entire access fails."
+ * 
+ * Parameters:
+ *   begin: Start of SPMP protected region (inclusive)
+ *   end_: End of SPMP protected region (exclusive) 
+ *   addr: Start address of memory access
+ *   width: Size of memory access in bytes
+ * 
+ * Returns: Relationship between access [addr, addr+width) and region [begin, end_) */
+function spmpRangeMatch(
+  begin : nat,
+  end_ : nat,
+  addr : nat,
+  width : nat,
+) -> spmpAddrMatch =
+  if      (addr + width <= begin) | (end_ <= addr)
+  then    SPMP_NoMatch      // Access completely outside region
+  else if (begin <= addr) & (addr + width <= end_)
+  then    SPMP_Match        // Access completely within region
+  else    SPMP_PartialMatch // Access partially overlaps region (violation)
+
+/* Match a memory access against an SPMP address range.
+ * 
+ * Parameters:
+ *   addr: Physical address of access
+ *   width: Width of access in bytes
+ *   rng: SPMP address range (None if entry disabled)
+ * 
+ * Returns: Address match result */
+function spmpMatchAddr(addr: nat, width: nat, rng: spmp_addr_range) -> spmpAddrMatch = {
   match rng {
-    None()         => SPMP_NoMatch,
-    Some((lo, hi)) => if   hi <_u lo   /* to handle mis-configuration */
+    None()         => SPMP_NoMatch,  // Entry disabled
+    Some((lo, hi)) => if   hi <_u lo   /* Handle misconfigured ranges */
                       then SPMP_NoMatch
                       else {
-                        if      (addr + width <=_u lo) | (hi <=_u addr)
-                        then    SPMP_NoMatch
-                        else if (lo <=_u addr) & (addr + width <=_u hi)
-                        then    SPMP_Match
-                        else    SPMP_PartialMatch
+                        let lo_nat = unsigned(lo);
+                        let hi_nat = unsigned(hi);
+                        spmpRangeMatch(lo_nat, hi_nat, addr, width)
                       }
   }
 }
 
+/*=======================================================================================*/
+/*  SPMP Entry Matching and Result Types                                                */
+/*=======================================================================================*/
+
+/* SPMP matching results for individual entries */
 enum spmpMatch = {SPMP_Success, SPMP_Continue, SPMP_Fail}
 
-function spmpMatchEntry(addr: xlenbits, width: xlenbits, acc: AccessType(ext_access_type), priv: Privilege,
+/* Match a memory access against a single SPMP entry.
+ * 
+ * NOTE: This function is kept for compatibility but is no longer used 
+ * by the main spmpCheck function, which implements the revised matching logic directly.
+ * 
+ * This function implements the complete SPMP checking algorithm for one entry:
+ *   1. Check if the access address range matches the entry's protected range
+ *   2. If matched, verify permissions according to privilege level and S bit
+ *   3. Return appropriate result for SPMP decision
+ * 
+ * Per  Section 3.4: SPMP entries are checked in order from 0 to 63.
+ * The first matching entry determines the access result.
+ * 
+ * Parameters:
+ *   Physaddr(addr): Physical address being accessed
+ *   width: Access width in bytes 
+ *   acc: Type of memory access (read/write/execute)
+ *   priv: Current privilege level
+ *   ent: SPMP configuration entry being checked
+ *   spmpaddr: Address register value for this entry
+ *   prev_spmpaddr: Previous entry's address (needed for TOR mode)
+ * 
+ * Returns:
+ *   SPMP_Success: Access granted by this entry
+ *   SPMP_Fail: Access denied by this entry  
+ *   SPMP_Continue: This entry doesn't match, check next entry */
+function spmpMatchEntry(Physaddr(addr): physaddr, width: xlenbits, acc: AccessType(ext_access_type), priv: Privilege,
                        ent: Spmpcfg_ent, spmpaddr: xlenbits, prev_spmpaddr: xlenbits) -> spmpMatch = {
+  let addr = unsigned(addr);
+  let width = unsigned(width);
   let rng = spmpAddrRange(ent, spmpaddr, prev_spmpaddr);
   match spmpMatchAddr(addr, width, rng) {
-    SPMP_NoMatch      => SPMP_Continue,
-    SPMP_PartialMatch => SPMP_Fail,
+    SPMP_NoMatch      => SPMP_Continue,     // No match, try next entry
+    SPMP_PartialMatch => SPMP_Fail,         // Partial match is violation
     SPMP_Match        => if   spmpCheckPerms(ent, acc, priv)
-                        then SPMP_Success
-                        else SPMP_Fail
+                        then SPMP_Success   // Full match with permission
+                        else SPMP_Fail      // Full match without permission
   }
 }
 
-/* priority checks */
+/*=======================================================================================*/
+/*  SPMP Exception Handling                                                             */
+/*                                                                                       */
+/*  SPMP violations generate Page Fault exceptions, distinguishing them from PMP        */
+/*  Access Fault exceptions per  Section 5.                             */
+/*=======================================================================================*/
 
-function spmpCheck forall 'n, 'n > 0. (addr: xlenbits, width: atom('n), acc: AccessType(ext_access_type), priv: Privilege)
-                  -> option(ExceptionType) = {
-  let width : xlenbits = to_bits(sizeof(xlen), width);
-  let check : bool =
-  match spmpMatchEntry(addr, width, acc, priv, spmp0cfg, spmpaddr0, zeros()) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp1cfg, spmpaddr1, spmpaddr0) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp2cfg, spmpaddr2, spmpaddr1) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp3cfg, spmpaddr3, spmpaddr2) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp4cfg, spmpaddr4, spmpaddr3) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp5cfg, spmpaddr5, spmpaddr4) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp6cfg, spmpaddr6, spmpaddr5) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp7cfg, spmpaddr7, spmpaddr6) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp8cfg, spmpaddr8, spmpaddr7) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp9cfg, spmpaddr9, spmpaddr8) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp10cfg, spmpaddr10, spmpaddr9) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp11cfg, spmpaddr11, spmpaddr10) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp12cfg, spmpaddr12, spmpaddr11) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp13cfg, spmpaddr13, spmpaddr12) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp14cfg, spmpaddr14, spmpaddr13) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp15cfg, spmpaddr15, spmpaddr14) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue => 
-  match spmpMatchEntry(addr, width, acc, priv, spmp16cfg, spmpaddr16, spmpaddr15) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp17cfg, spmpaddr17, spmpaddr16) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp18cfg, spmpaddr18, spmpaddr17) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp19cfg, spmpaddr19, spmpaddr18) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp20cfg, spmpaddr20, spmpaddr19) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp21cfg, spmpaddr21, spmpaddr20) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp22cfg, spmpaddr22, spmpaddr21) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp23cfg, spmpaddr23, spmpaddr22) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp24cfg, spmpaddr24, spmpaddr23) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp25cfg, spmpaddr25, spmpaddr24) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp26cfg, spmpaddr26, spmpaddr25) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp27cfg, spmpaddr27, spmpaddr26) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp28cfg, spmpaddr28, spmpaddr27) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp29cfg, spmpaddr29, spmpaddr28) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp30cfg, spmpaddr30, spmpaddr29) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp31cfg, spmpaddr31, spmpaddr30) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue => 
-  match spmpMatchEntry(addr, width, acc, priv, spmp32cfg, spmpaddr32, spmpaddr31) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp33cfg, spmpaddr33, spmpaddr32) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp34cfg, spmpaddr34, spmpaddr33) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp35cfg, spmpaddr35, spmpaddr34) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp36cfg, spmpaddr36, spmpaddr35) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp37cfg, spmpaddr37, spmpaddr36) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp38cfg, spmpaddr38, spmpaddr37) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp39cfg, spmpaddr39, spmpaddr38) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp40cfg, spmpaddr40, spmpaddr39) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp41cfg, spmpaddr41, spmpaddr40) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp42cfg, spmpaddr42, spmpaddr41) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp43cfg, spmpaddr43, spmpaddr42) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp44cfg, spmpaddr44, spmpaddr43) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp45cfg, spmpaddr45, spmpaddr44) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp46cfg, spmpaddr46, spmpaddr45) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp47cfg, spmpaddr47, spmpaddr46) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue => 
-  match spmpMatchEntry(addr, width, acc, priv, spmp48cfg, spmpaddr48, spmpaddr47) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp49cfg, spmpaddr49, spmpaddr48) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp50cfg, spmpaddr50, spmpaddr49) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp51cfg, spmpaddr51, spmpaddr50) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp52cfg, spmpaddr52, spmpaddr51) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp53cfg, spmpaddr53, spmpaddr52) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp54cfg, spmpaddr54, spmpaddr53) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp55cfg, spmpaddr55, spmpaddr54) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp56cfg, spmpaddr56, spmpaddr55) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp57cfg, spmpaddr57, spmpaddr56) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp58cfg, spmpaddr58, spmpaddr57) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp59cfg, spmpaddr59, spmpaddr58) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp60cfg, spmpaddr60, spmpaddr59) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp61cfg, spmpaddr61, spmpaddr60) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp62cfg, spmpaddr62, spmpaddr61) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue =>
-  match spmpMatchEntry(addr, width, acc, priv, spmp63cfg, spmpaddr63, spmpaddr62) {
-    SPMP_Success  => true,
-    SPMP_Fail     => false,
-    SPMP_Continue => match priv {
-                      User => false,
-                      _    => true
-                    }
-  }}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}};
+/* Convert memory access type to appropriate SPMP Page Fault exception.
+ * 
+ * Key difference from PMP ( Section 5.1):
+ *   - PMP violations → Access Fault exceptions
+ *   - SPMP violations → Page Fault exceptions  
+ * 
+ * This distinction allows OS kernels to differentiate between:
+ *   - Page-level protection violations (SPMP) 
+ *   - Platform-level protection violations (PMP)
+ * 
+ * Exception types follow standard RISC-V privilege specification. */
+function accessToSpmpFault(acc : AccessType(ext_access_type)) -> ExceptionType =
+  match acc {
+    Read(_)            => E_Load_Page_Fault(),     // Load page fault
+    Write(_)           => E_SAMO_Page_Fault(),     // Store/AMO page fault  
+    ReadWrite(_)       => E_SAMO_Page_Fault(),     // Store/AMO page fault
+    InstructionFetch() => E_Fetch_Page_Fault()     // Instruction page fault
+  }
 
-/* 
- * The SPMP is proposing to rename page fault to SPMP/Sv fault for clarity.
- * Since SPMP is not merged into spec, so it remains page fault here.
- */    
-  if   check
-  then None()
-  else match acc {
-    Read(_)      => Some(E_Load_Page_Fault()),
-    Write(_)     => Some(E_SAMO_Page_Fault()),
-    ReadWrite(_) => Some(E_SAMO_Page_Fault()),
-    Execute()    => Some(E_Fetch_Page_Fault())
+/*=======================================================================================*/
+/*  SPMP Register Access Functions                                                      */
+/*                                                                                       */
+/*  Provides unified access to all 64 SPMP entries. SPMP supports the same number      */
+/*  of entries as PMP for consistency ( Section 2.1).                  */
+/*=======================================================================================*/
+
+/* Retrieve SPMP configuration and address register pair for entry i.
+ * 
+ * SPMP supports 64 entries (0-63) same as PMP, each with:
+ *   - One configuration entry (8 bits in spmpcfg registers)
+ *   - One address register (spmpaddr registers)
+ * 
+ * This function provides unified access across all entries for the
+ * main SPMP checking loop. */
+function spmpGetEntry(i: nat) -> (Spmpcfg_ent, xlenbits) = {
+  if i < 64 then (spmpcfg_n[i], spmpaddr_n[i])
+  else (spmpcfg_n[0], zeros())  // fallback case
+}
+
+/*=======================================================================================*/
+/*  Main SPMP Checking Function                                                         */
+/*                                                                                       */
+/*  Primary entry point for SPMP access control checks. Implements the complete        */
+/*  SPMP algorithm per  Section 2.5.                                      */
+/*=======================================================================================*/
+
+/* Perform SPMP access control check for a memory operation.
+ * 
+ * Matching Logic:
+ *   1. SPMP entries are statically prioritized (0-63 in order)
+ *   2. The lowest-numbered SPMP entry that matches any byte of access determines the result
+ *   3. The SPMP entry must match ALL bytes of access, or the access fails
+ *   4. Address matching is done irrespective of the S, R, W, and X bits
+ * 
+ * Access Control Rules:
+ *   1. If effective privilege mode is M, the access is allowed
+ *   2. If effective privilege mode is S/U and no SPMP entry matches, but at least 
+ *      one SPMP entry is delegated, the access is denied
+ *   3. Otherwise, access is checked according to permission bits in matching SPMP entry
+ * 
+ * Parameters:
+ *   addr: Physical address of the memory access
+ *   width: Size of the access in bytes (1, 2, 4, 8, etc.)
+ *   acc: Type of access (Read/Write/Execute/ReadWrite)
+ *   priv: Current privilege level of the accessing code
+ * 
+ * Returns:
+ *   None(): Access allowed
+ *   Some(exception): Access denied with specific page fault type */
+function spmpCheck forall 'n, 0 < 'n <= max_mem_access . (
+  addr: physaddr,
+  width: int('n),
+  acc: AccessType(ext_access_type),
+  priv: Privilege
+) -> option(ExceptionType) = {
+  let width : xlenbits = to_bits(width);
+  
+  /* Rule 1: If effective privilege mode is M, the access is allowed */
+  match priv {
+    Machine => return None(),  // M-mode bypasses all SPMP checks
+    _ => ()
+  };
+  
+  /* Check all SPMP entries in order 0-63 for address matching */
+  var has_delegated_entries : bool = false;  // Track if any SPMP entries are delegated
+  
+  foreach (i from 0 to 63) {
+    /* Get previous address for TOR mode (entry 0 uses address 0) */
+    let prev_spmpaddr = if i > 0 then {
+      let (_, prev_addr) = spmpGetEntry(i - 1);
+      prev_addr
+    } else zeros();
+    
+    /* Get current entry configuration and address */
+    let (cfg, spmpaddr) = spmpGetEntry(i);
+    
+    /* Check if this entry is delegated (enabled/configured) */
+    let is_delegated = spmpAddrMatchType_of_bits(cfg[A]) != OFF;
+    has_delegated_entries = has_delegated_entries | is_delegated;
+    
+    /* Only check enabled entries for address matching */
+    if is_delegated then {
+      /* Check address matching (irrespective of S, R, W, X bits) */
+      let Physaddr(addr_bits) = addr;
+      let addr_nat = unsigned(addr_bits);
+      let width_nat = unsigned(width);
+      let rng = spmpAddrRange(cfg, spmpaddr, prev_spmpaddr);
+      
+      match spmpMatchAddr(addr_nat, width_nat, rng) {
+        SPMP_NoMatch      => (),  // Continue to next entry
+        SPMP_PartialMatch => return Some(accessToSpmpFault(acc)),  // Partial match fails
+        SPMP_Match        => {
+          /* Full address match found - check permissions */
+          return if spmpCheckPerms(cfg, acc, priv)
+                 then None()                        // Access granted
+                 else Some(accessToSpmpFault(acc))  // Access denied
+        }
+      }
+    }
+  };
+
+  /* Rule 2: No SPMP entry matched, check delegation status */
+  if has_delegated_entries then {
+    /* At least one SPMP entry is delegated but none matched - deny access */
+    Some(accessToSpmpFault(acc))
+  } else {
+    /* No SPMP entries are delegated - allow access (backward compatibility) */
+    None()
   }
 }
 
-function init_spmp() -> unit = {
-  spmp0cfg  = update_A(spmp0cfg,  spmpAddrMatchType_to_bits(OFF));
-  spmp1cfg  = update_A(spmp1cfg,  spmpAddrMatchType_to_bits(OFF));
-  spmp2cfg  = update_A(spmp2cfg,  spmpAddrMatchType_to_bits(OFF));
-  spmp3cfg  = update_A(spmp3cfg,  spmpAddrMatchType_to_bits(OFF));
-  spmp4cfg  = update_A(spmp4cfg,  spmpAddrMatchType_to_bits(OFF));
-  spmp5cfg  = update_A(spmp5cfg,  spmpAddrMatchType_to_bits(OFF));
-  spmp6cfg  = update_A(spmp6cfg,  spmpAddrMatchType_to_bits(OFF));
-  spmp7cfg  = update_A(spmp7cfg,  spmpAddrMatchType_to_bits(OFF));
-  spmp8cfg  = update_A(spmp8cfg,  spmpAddrMatchType_to_bits(OFF));
-  spmp9cfg  = update_A(spmp9cfg,  spmpAddrMatchType_to_bits(OFF));
-  spmp10cfg = update_A(spmp10cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp11cfg = update_A(spmp11cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp12cfg = update_A(spmp12cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp13cfg = update_A(spmp13cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp14cfg = update_A(spmp14cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp15cfg = update_A(spmp15cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp16cfg = update_A(spmp16cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp17cfg = update_A(spmp17cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp18cfg = update_A(spmp18cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp19cfg = update_A(spmp19cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp20cfg = update_A(spmp20cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp21cfg = update_A(spmp21cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp22cfg = update_A(spmp22cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp23cfg = update_A(spmp23cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp24cfg = update_A(spmp24cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp25cfg = update_A(spmp25cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp26cfg = update_A(spmp26cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp27cfg = update_A(spmp27cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp28cfg = update_A(spmp28cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp29cfg = update_A(spmp29cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp30cfg = update_A(spmp30cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp31cfg = update_A(spmp31cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp32cfg = update_A(spmp32cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp33cfg = update_A(spmp33cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp34cfg = update_A(spmp34cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp35cfg = update_A(spmp35cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp36cfg = update_A(spmp36cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp37cfg = update_A(spmp37cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp38cfg = update_A(spmp38cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp39cfg = update_A(spmp39cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp40cfg = update_A(spmp40cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp41cfg = update_A(spmp41cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp42cfg = update_A(spmp42cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp43cfg = update_A(spmp43cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp44cfg = update_A(spmp44cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp45cfg = update_A(spmp45cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp46cfg = update_A(spmp46cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp47cfg = update_A(spmp47cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp48cfg = update_A(spmp48cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp49cfg = update_A(spmp49cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp50cfg = update_A(spmp50cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp51cfg = update_A(spmp51cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp52cfg = update_A(spmp52cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp53cfg = update_A(spmp53cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp54cfg = update_A(spmp54cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp55cfg = update_A(spmp55cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp56cfg = update_A(spmp56cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp57cfg = update_A(spmp57cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp58cfg = update_A(spmp58cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp59cfg = update_A(spmp59cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp60cfg = update_A(spmp60cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp61cfg = update_A(spmp61cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp62cfg = update_A(spmp62cfg, spmpAddrMatchType_to_bits(OFF));
-  spmp63cfg = update_A(spmp63cfg, spmpAddrMatchType_to_bits(OFF));
+/*=======================================================================================*/
+/*  SPMP Reset and Initialization                                                       */
+/*=======================================================================================*/
 
-  /* For backwards compatibility with software that is unaware of SPMP,
-    initialize SPMP to permit unprivileged access to all of memory. */
-  // spmpWriteCfgReg(2, 0b1000100000000000000000000000000000000000000000000000000000000000);
-  // spmpaddr63 = spmpWriteAddr(spmpaddr63, 0b1111111111111111111111111111111111111111111111111111111111111111)
+/* Initialize SPMP to safe default state.
+ * 
+ * Per  Section 6.1: SPMP should be initialized to allow all
+ * access by default to maintain compatibility with existing software.
+ * 
+ * Reset behavior:
+ *   - All entries set to OFF (disabled) state
+ *   - No memory regions protected initially  
+ *   - All accesses allowed until SPMP entries are configured
+ *   - L bits are cleared (only possible during reset by hardware/M-mode)
+ * 
+ * This differs from PMP reset which typically denies access by default. 
+ * 
+ * NOTE: This function should only be called during system reset or by M-mode code.
+ * The L bit can only be cleared by M-mode or hardware reset. */
+function reset_spmp() -> unit = {
+  /* Reset all 64 SPMP entries to OFF state */
+  foreach (i from 0 to 63) {
+    // On reset the SPMP register's A field is set to OFF (disabled) and L bit is cleared.
+    // This is the only way to clear L bits after they have been set.
+    spmpcfg_n[i] = [spmpcfg_n[i] with A = spmpAddrMatchType_to_bits(OFF), L = 0b0, S = 0b0, X = 0b0, W = 0b0, R = 0b0];
+    spmpaddr_n[i] = zeros();
+  };
+
+  /* After reset, SPMP allows all access by default.
+   * This ensures backwards compatibility with software that is unaware of SPMP.
+   * Explicit configuration is required to enable protection. */
 }
+
+
+
+/* Helper function to unlock SPMP entry (M-mode only).
+ * This function can be used by M-mode software to unlock specific SPMP entries.
+ * Note: This should only be called from M-mode context.
+ */
+function spmpUnlock(n: range(0, 63)) -> unit = {
+  // Only M-mode can unlock entries
+  if cur_privilege == Machine then {
+    spmpcfg_n[n] = [spmpcfg_n[n] with L = 0b0];
+  }
+}
+
+/*=======================================================================================*/
+/*  SPMP Configuration Validation                                                       */
+/*                                                                                       */
+/*  Validation functions to ensure SPMP entries are configured correctly.               */
+/*=======================================================================================*/
+
+/* Validate SPMP configuration entry for correctness.
+ * 
+ * Checks entry-specific constraints based on address matching mode.
+ * Invalid configurations may lead to unpredictable behavior.
+ * 
+ * Parameters:
+ *   i: Entry index (0-63)
+ *   cfg: Configuration entry to validate
+ *   spmpaddr: Address register value
+ * 
+ * Returns: true if configuration is valid */
+function spmpValidateConfig(i: nat, cfg: Spmpcfg_ent, spmpaddr: xlenbits) -> bool = {
+  match spmpAddrMatchType_of_bits(cfg[A]) {
+    /* OFF: Always valid - entry is disabled */
+    OFF => true,
+    
+    /* TOR: Validate address ordering for proper range */
+    TOR => {
+      if i == 0 then spmpaddr != zeros()  // First entry needs non-zero address
+      else {
+        let (_, prev_addr) = spmpGetEntry(i - 1);
+        prev_addr <_u spmpaddr  // Ensure prev_addr < spmpaddr for valid range
+      }
+    },
+    
+    /* NA4: Validate 4-byte alignment */
+    NA4 => {
+      spmpaddr[1..0] == zeros()  // Bottom 2 bits must be 0 for word alignment
+    },
+    
+    /* NAPOT: Validate power-of-2 region encoding */
+    NAPOT => {
+      let mask = spmpaddr ^ (spmpaddr + 1);
+      let trailing_ones = spmpaddr & mask;
+      trailing_ones == mask  // Validate that trailing bits form proper NAPOT encoding
+    }
+  }
+}
+
+/* Note: Enhanced debugging support omitted to avoid compilation issues.
+ * Debug functions can be added later with proper string handling. */
