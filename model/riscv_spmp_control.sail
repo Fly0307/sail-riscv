@@ -386,6 +386,9 @@ function spmpEntryActive(idx: range(0, 63)) -> bool = {
   }
 }
 
+// defined in riscv_vmem.sail 
+val translationMode: Privilege -> SATPMode
+
 /*=======================================================================================*/
 /*  Main SPMP Checking Function                                                         */
 /*                                                                                       */
@@ -397,8 +400,9 @@ function spmpEntryActive(idx: range(0, 63)) -> bool = {
  * 
  * SPMP and Paging Interaction:
  *   - SPMP is enabled when satp.mode == Bare and SPMP is implemented
- *   - SPMP and paged virtual memory cannot be active simultaneously
+ *   - SPMP and paged virtual memory are mutually exclusive
  *   - When satp.mode != Bare, paged virtual memory provides protection instead
+ *   - Machine mode always uses SPMP if implemented (M-mode doesn't use virtual memory)
  * 
  * Matching Logic:
  *   1. SPMP entries are statically prioritized (0-63 in order)
@@ -407,10 +411,11 @@ function spmpEntryActive(idx: range(0, 63)) -> bool = {
  *   4. Address matching is done irrespective of the S, R, W, and X bits
  * 
  * Access Control Rules:
- *   1. If effective privilege mode is M, the access is allowed
- *   2. If effective privilege mode is S/U and no SPMP entry matches, but at least 
+ *   1. Calculate effective privilege mode considering MPRV bit
+ *   2. If effective privilege mode is M, the access is allowed
+ *   3. If effective privilege mode is S/U and no SPMP entry matches, but at least 
  *      one SPMP entry is delegated, the access is denied
- *   3. Otherwise, access is checked according to permission bits in matching SPMP entry
+ *   4. Otherwise, access is checked according to permission bits in matching SPMP entry
  * 
  * Parameters:
  *   addr: Physical address of the memory access
@@ -440,21 +445,42 @@ function spmpCheck forall 'n, 0 < 'n <= max_mem_access . (
    * - When satp.mode != Bare, paged virtual memory provides protection instead
    * 
    * This ensures SPMP and paged virtual memory are mutually exclusive per spec.
-   * 
-   * NOTE: For now, we implement a conservative approach where SPMP is active
-   * for all modes when sys_spmp_enabled is true. A complete implementation
-   * would check translationMode(priv) == Bare for S/U modes, but this requires
-   * access to the satp register which is defined in riscv_vmem.sail.
-   * 
-   * TODO: When the file ordering allows, use translationMode(priv) == Bare check. */
+   */
   if priv != Machine then {
-    // For S/U modes: In a complete implementation, check if satp.mode == Bare
-    // For now, assume SPMP is always active when enabled (conservative approach)
-    ()
+    // For S/U modes: SPMP is only active when translation mode is Bare
+    // When paged virtual memory is active, SPMP is disabled and access is allowed
+    if translationMode(priv) != Bare then {
+      return None()  // Paged virtual memory active, SPMP disabled
+    }
   };
   
-  /* Rule 1: If effective privilege mode is M, the access is allowed */
-  match priv {
+  /* Rule 1: Calculate effective privilege mode for SPMP checking
+   * 
+   * SPMP checks will be applied to all accesses whose effective privilege mode is S or U:
+   * - Instruction fetches and data accesses in S and U mode
+   * - Data accesses in M-mode when MPRV=1 and MPP contains S or U
+   * 
+   * The effective privilege mode is determined by:
+   * - Normal case: Current privilege level
+   * - MPRV case: When cur_privilege=M and mstatus.MPRV=1, use mstatus.MPP for data accesses
+   */
+  let effective_priv : Privilege = match (priv, acc) {
+    (Machine, InstructionFetch(_)) => Machine,  // M-mode instruction fetches always use M-mode
+    (Machine, _) => {
+      // M-mode data access: Check MPRV bit
+      if mstatus[MPRV] == 0b1 then {
+        // MPRV=1: Use MPP as effective privilege for data accesses
+        privLevel_of_bits(mstatus[MPP])
+      } else {
+        // MPRV=0: Use current privilege
+        Machine
+      }
+    },
+    (_, _) => priv  // S/U mode: Always use current privilege
+  };
+  
+  /* Rule 2: If effective privilege mode is M, the access is allowed */
+  match effective_priv {
     Machine => return None(),  // M-mode bypasses all SPMP checks
     _ => ()
   };
@@ -498,8 +524,8 @@ function spmpCheck forall 'n, 0 < 'n <= max_mem_access . (
         SPMP_NoMatch      => (),  // Continue to next entry
         SPMP_PartialMatch => return Some(accessToSpmpFault(acc)),  // Partial match fails
         SPMP_Match        => {
-          /* Full address match found - check permissions */
-          return if spmpCheckPerms(cfg, acc, priv)
+          /* Full address match found - check permissions using effective privilege mode */
+          return if spmpCheckPerms(cfg, acc, effective_priv)
                  then None()                        // Access granted
                  else Some(accessToSpmpFault(acc))  // Access denied
         }
@@ -507,7 +533,7 @@ function spmpCheck forall 'n, 0 < 'n <= max_mem_access . (
     }
   };
 
-  /* Rule 2: No SPMP entry matched, check delegation status */
+  /* Rule 3: No SPMP entry matched, check delegation status */
   if has_delegated_entries then {
     /* At least one SPMP entry is delegated but none matched - deny access */
     Some(accessToSpmpFault(acc))
