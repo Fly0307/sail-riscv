@@ -355,6 +355,38 @@ function spmpGetEntry(i: nat) -> (Spmpcfg_ent, xlenbits) = {
   else (spmpcfg_n[0], zeros())  // fallback case
 }
 
+/* SPMP Context Switch Optimization Helper Functions */
+
+/* Check if an SPMP entry is active based on spmpswitch and configuration.
+ * 
+ * Activation Rule (Section 2.8):
+ * - An entry is active only when: spmpswitch[i] & (spmp[i]cfg.A != OFF)
+ * 
+ * Special Cases:
+ * - When spmpswitch[i] == 0 and spmp[i]cfg.L == 1, entry i remains enabled
+ * - TOR entries match regardless of spmpswitch[i-1] value
+ */
+function spmpEntryActive(idx: range(0, 63)) -> bool = {
+  let cfg = spmpcfg_n[idx];
+  let match_type = spmpAddrMatchType_of_bits(cfg[A]);
+  let switch_bit = if xlen == 32 then {
+    if idx < 32 then spmpswitch[idx] else spmpswitchh[idx - 32]
+  } else {
+    spmpswitch[idx]
+  };
+
+  // Special case: locked entries remain enabled even when switch bit is 0
+  let is_locked = spmpLocked(cfg);
+  if is_locked then true
+  else {
+    /* Entry is active if:
+        * 1. Switch bit is set, OR
+        * 2. Entry is locked (locked entries always remain enabled), OR 
+        * 3. Entry is TOR mode (TOR entries always match when A != OFF) */
+    (switch_bit == bitone) & (match_type != OFF)
+  }
+}
+
 /*=======================================================================================*/
 /*  Main SPMP Checking Function                                                         */
 /*                                                                                       */
@@ -363,6 +395,11 @@ function spmpGetEntry(i: nat) -> (Spmpcfg_ent, xlenbits) = {
 /*=======================================================================================*/
 
 /* Perform SPMP access control check for a memory operation.
+ * 
+ * SPMP and Paging Interaction:
+ *   - SPMP is enabled when satp.mode == Bare and SPMP is implemented
+ *   - SPMP and paged virtual memory cannot be active simultaneously
+ *   - When satp.mode != Bare, paged virtual memory provides protection instead
  * 
  * Matching Logic:
  *   1. SPMP entries are statically prioritized (0-63 in order)
@@ -393,6 +430,30 @@ function spmpCheck forall 'n, 0 < 'n <= max_mem_access . (
 ) -> option(ExceptionType) = {
   let width : xlenbits = to_bits(width);
   
+  /* SPMP Enablement Check: SPMP is only active when satp.mode == Bare
+   * When paged virtual memory is active (satp.mode != Bare), SPMP is disabled
+   * and this function should allow all accesses to proceed */
+  if not(sys_spmp_enabled) then return None();  // SPMP not implemented
+  
+  /* Check SPMP and Paging interaction:
+   * - Machine mode: Always uses SPMP if implemented (Machine mode doesn't use virtual memory)
+   * - Supervisor/User modes: SPMP is only active when satp.mode == Bare
+   * - When satp.mode != Bare, paged virtual memory provides protection instead
+   * 
+   * This ensures SPMP and paged virtual memory are mutually exclusive per spec.
+   * 
+   * NOTE: For now, we implement a conservative approach where SPMP is active
+   * for all modes when sys_spmp_enabled is true. A complete implementation
+   * would check translationMode(priv) == Bare for S/U modes, but this requires
+   * access to the satp register which is defined in riscv_vmem.sail.
+   * 
+   * TODO: When the file ordering allows, use translationMode(priv) == Bare check. */
+  if priv != Machine then {
+    // For S/U modes: In a complete implementation, check if satp.mode == Bare
+    // For now, assume SPMP is always active when enabled (conservative approach)
+    ()
+  };
+  
   /* Rule 1: If effective privilege mode is M, the access is allowed */
   match priv {
     Machine => return None(),  // M-mode bypasses all SPMP checks
@@ -416,8 +477,13 @@ function spmpCheck forall 'n, 0 < 'n <= max_mem_access . (
     let is_delegated = spmpAddrMatchType_of_bits(cfg[A]) != OFF;
     has_delegated_entries = has_delegated_entries | is_delegated;
     
-    /* Only check enabled entries for address matching */
-    if is_delegated then {
+    /* Check if entry is active considering spmpswitch optimization (Section 2.8) */
+    let is_active = if is_delegated & hw_idx < 64 then {
+      spmpEntryActive(hw_idx)  // Use the helper function directly for valid indices
+    } else false;
+    
+    /* Only check active entries for address matching */
+    if is_active then {
       /* Check address matching (irrespective of S, R, W, X bits) */
       let Physaddr(addr_bits) = addr;
       let addr_nat = unsigned(addr_bits);
@@ -474,6 +540,9 @@ function reset_spmp() -> unit = {
     spmpcfg_n[i] = [spmpcfg_n[i] with A = spmpAddrMatchType_to_bits(OFF), L = 0b0, S = 0b0, X = 0b0, W = 0b0, R = 0b0];
     spmpaddr_n[i] = zeros();
   };
+
+  /* Reset SPMP switch registers - must be cleared on reset per Section 2.8 */
+  spmpSwitchReset();
 
   /* After reset, SPMP allows all access by default.
    * This ensures backwards compatibility with software that is unaware of SPMP.

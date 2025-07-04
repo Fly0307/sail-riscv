@@ -133,6 +133,33 @@ mapping clause csr_name_map = 0x1ED  <-> "spmpaddr61"
 mapping clause csr_name_map = 0x1EE  <-> "spmpaddr62"
 mapping clause csr_name_map = 0x1EF  <-> "spmpaddr63"
 
+mapping clause csr_name_map = 0x1F0  <-> "spmpswitch" // SPMP domain switch register
+mapping clause csr_name_map = 0x1F1  <-> "spmpswitchh" // SPMP domain switch register high (RV32 only)
+// mapping clause csr_name_map = 0x1F2  <-> "mpmpdeleg"  // allows an implementation to hardwire the PMP/SPMP split if desired
+
+/*=======================================================================================*/
+/*  SPMP Context Switching Optimization (Section 2.8)                                  */
+/*                                                                                       */
+/*  The spmpswitch registers provide context switching optimization by allowing         */
+/*  software to activate/deactivate SPMP entries without modifying configuration.      */
+/*                                                                                       */
+/*  Register Layout:                                                                     */
+/*    - RV32: spmpswitch (entries 0-31) + spmpswitchh (entries 32-63)                  */
+/*    - RV64: spmpswitch (entries 0-63)                                                 */
+/*                                                                                       */
+/*  Activation Rule:                                                                     */
+/*    An entry is active only when: spmpswitch[i] & (spmp[i]cfg.A != OFF)              */
+/*                                                                                       */
+/*  Special Cases:                                                                       */
+/*    - When spmpswitch[i] == 0 and spmp[i]cfg.L == 1, entry i remains enabled        */
+/*    - TOR entries match regardless of spmpswitch[i-1] value                          */
+/*    - spmpswitch registers must be cleared on reset                                   */
+/*=======================================================================================*/
+
+/* SPMP switch registers - control activation of SPMP entries */
+register spmpswitch : xlenbits
+register spmpswitchh : bits(32)  // Only used in RV32
+
 /* SPMP configuration entries */
 
 /* Reuse PmpAddrMatchType */
@@ -282,6 +309,46 @@ function spmpWriteAddrReg(n : range(0, 63), v : xlenbits) -> unit = {
     v,
     priv
   );
+}
+
+
+/*=======================================================================================*/
+// spmpswitch - SPMP domain switch register (RV64 and RV32)
+function clause is_CSR_defined(0x1F0) = sys_spmp_enabled
+function clause read_CSR(0x1F0) = spmpswitch
+function clause write_CSR(0x1F0, value) = {
+  // spmpswitch register can be written by both M-mode and S-mode
+  spmpswitch = value;
+  spmpswitch
+}
+
+// spmpswitchh - SPMP domain switch register high (RV32 only)
+function clause is_CSR_defined(0x1F1) = sys_spmp_enabled & (xlen == 32)
+function clause read_CSR(0x1F1) = {
+  if xlen == 32
+  then zero_extend(spmpswitchh)
+  else zero_extend(0x0)
+}
+function clause write_CSR(0x1F1, value) = {
+  if xlen == 32
+  then {
+    spmpswitchh = value[31..0];
+    zero_extend(spmpswitchh)
+  }
+  else zero_extend(0x0)
+}
+
+/* Get the effective switch register value for 64-bit view */
+function spmpGetFullSwitchReg() -> bits(64) = {
+  if xlen == 32
+  then spmpswitchh @ spmpswitch[31..0]
+  else zero_extend(spmpswitch)
+}
+
+/* Initialize SPMP switch registers on reset */
+function spmpSwitchReset() -> unit = {
+  spmpswitch = zero_extend(0x0);
+  spmpswitchh = 0x00000000;
 }
 
 /* SPMP CSRs */
