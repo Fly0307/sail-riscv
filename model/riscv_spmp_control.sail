@@ -20,17 +20,17 @@ type spmp_addr_range = option((xlenbits, xlenbits))
  * 
  * Returns: Address range [min, max) in bytes, or None if no addresses match
  * 
- * Address Matching Types ( Section 3.2):
+ * Address Matching Types:
  *   - OFF: Entry is disabled, matches no addresses
  *   - TOR: Top-of-Range, matches [prev_spmpaddr*4, spmpaddr*4)
  *   - NA4: Naturally aligned 4-byte region
  *   - NAPOT: Naturally aligned power-of-two region */
 function spmpAddrRange(cfg: Spmpcfg_ent, spmpaddr: xlenbits, prev_spmpaddr: xlenbits) -> spmp_addr_range = {
   match spmpAddrMatchType_of_bits(cfg[A]) {
-    /* OFF: Entry disabled - no address matching ( Section 3.2.1) */
+    /* OFF: Entry disabled - no address matching*/
     OFF   => None(),
     
-    /* TOR: Top-of-Range addressing ( Section 3.2.2)
+    /* TOR: Top-of-Range addressing
      * Matches addresses in range [prev_spmpaddr*4, spmpaddr*4)
      * If prev_spmpaddr >= spmpaddr, no addresses match (invalid range) */
     TOR   => {
@@ -40,14 +40,14 @@ function spmpAddrRange(cfg: Spmpcfg_ent, spmpaddr: xlenbits, prev_spmpaddr: xlen
       else Some((prev_spmpaddr << 2, spmpaddr << 2))  // Convert to byte addresses
     },
     
-    /* NA4: Naturally Aligned 4-byte region ( Section 3.2.3)
+    /* NA4: Naturally Aligned 4-byte region
      * Matches exactly 4 bytes starting at spmpaddr*4 */
     NA4   => { 
       let lo = spmpaddr << 2;  // Convert word address to byte address
       Some((lo, lo + 4))       // 4-byte region
     },
     
-    /* NAPOT: Naturally Aligned Power-Of-Two region ( Section 3.2.4)
+    /* NAPOT: Naturally Aligned Power-Of-Two region
      * Address encoding: spmpaddr = base | (size/8 - 1)
      * Where trailing 1s in spmpaddr indicate the region size */
     NAPOT => { 
@@ -181,7 +181,7 @@ function spmpCheckRWX(ent, acc, priv) = {
 
 /* High-level SPMP permission check entry point.
  * 
- * Machine mode behavior ( Section 2.3):
+ * Machine mode behavior :
  *   - Machine mode bypasses all SPMP checks
  *   - This follows the principle that machine mode has unrestricted access
  *   - Only supervisor and user modes are subject to SPMP restrictions
@@ -195,7 +195,7 @@ function spmpCheckRWX(ent, acc, priv) = {
 val spmpCheckPerms: (Spmpcfg_ent, AccessType(ext_access_type), Privilege) -> bool
 function spmpCheckPerms(ent, acc, priv) = {
   match priv {
-    /* Machine mode: Always bypass SPMP checks ( Section 2.3) */
+    /* Machine mode: Always bypass SPMP checks */
     Machine => true,
     /* Supervisor/User mode: Apply full SPMP permission matrix */
     _       => spmpCheckRWX(ent, acc, priv)
@@ -206,7 +206,7 @@ function spmpCheckPerms(ent, acc, priv) = {
 /*  SPMP Address Matching Logic                                                         */
 /*                                                                                       */
 /*  Implements address range matching for SPMP entries. Unlike PMP, partial matches    */
-/*  are treated as violations per  Section 3.3.                        */
+/*  are treated as violations per .                                                   */
 /*=======================================================================================*/
 
 /* SPMP address matching result types */
@@ -219,8 +219,8 @@ enum spmpAddrMatch = {SPMP_NoMatch, SPMP_PartialMatch, SPMP_Match}
  *   2. Completely fall outside all protected regions (SPMP_NoMatch)
  *   3. Partially overlap a region (SPMP_PartialMatch - this is a violation)
  * 
- * Per  Section 3.3: "If any byte of an access partially matches
- * an SPMP entry, the entire access fails."
+ * If any byte of an access partially matches
+ * an SPMP entry, the entire access fails.
  * 
  * Parameters:
  *   begin: Start of SPMP protected region (inclusive)
@@ -279,7 +279,7 @@ enum spmpMatch = {SPMP_Success, SPMP_Continue, SPMP_Fail}
  *   2. If matched, verify permissions according to privilege level and S bit
  *   3. Return appropriate result for SPMP decision
  * 
- * Per  Section 3.4: SPMP entries are checked in order from 0 to 63.
+ * SPMP entries are checked in order from 0 to 63.
  * The first matching entry determines the access result.
  * 
  * Parameters:
@@ -313,12 +313,11 @@ function spmpMatchEntry(Physaddr(addr): physaddr, width: xlenbits, acc: AccessTy
 /*  SPMP Exception Handling                                                             */
 /*                                                                                       */
 /*  SPMP violations generate Page Fault exceptions, distinguishing them from PMP        */
-/*  Access Fault exceptions per  Section 5.                             */
 /*=======================================================================================*/
 
 /* Convert memory access type to appropriate SPMP Page Fault exception.
  * 
- * Key difference from PMP ( Section 5.1):
+ * Key difference from PMP :
  *   - PMP violations → Access Fault exceptions
  *   - SPMP violations → Page Fault exceptions  
  * 
@@ -338,8 +337,8 @@ function accessToSpmpFault(acc : AccessType(ext_access_type)) -> ExceptionType =
 /*=======================================================================================*/
 /*  SPMP Register Access Functions                                                      */
 /*                                                                                       */
-/*  Provides unified access to all 64 SPMP entries. SPMP supports the same number      */
-/*  of entries as PMP for consistency ( Section 2.1).                  */
+/*  Provides unified access to all 64 SPMP entries. SPMP supports the same number       */
+/*  of entries as PMP for consistency.                                                  */
 /*=======================================================================================*/
 
 /* Retrieve SPMP configuration and address register pair for entry i.
@@ -359,7 +358,7 @@ function spmpGetEntry(i: nat) -> (Spmpcfg_ent, xlenbits) = {
 
 /* Check if an SPMP entry is active based on spmpswitch and configuration.
  * 
- * Activation Rule (Section 2.8):
+ * Activation Rule:
  * - An entry is active only when: spmpswitch[i] & (spmp[i]cfg.A != OFF)
  * 
  * Special Cases:
@@ -391,7 +390,7 @@ function spmpEntryActive(idx: range(0, 63)) -> bool = {
 /*  Main SPMP Checking Function                                                         */
 /*                                                                                       */
 /*  Primary entry point for SPMP access control checks. Implements the complete        */
-/*  SPMP algorithm per  Section 2.5.                                      */
+/*  SPMP algorithm                                                                       */
 /*=======================================================================================*/
 
 /* Perform SPMP access control check for a memory operation.
@@ -460,24 +459,29 @@ function spmpCheck forall 'n, 0 < 'n <= max_mem_access . (
     _ => ()
   };
   
-  /* Check all SPMP entries in order 0-63 for address matching */
+  /* Check all SPMP entries in order for address matching.
+   * Only check hardware resources allocated to SPMP (from getPmpNum() to 63) */
   var has_delegated_entries : bool = false;  // Track if any SPMP entries are delegated
+  let spmp_start = getPmpNum();  // First hardware resource allocated to SPMP
+  let spmp_count = getSpmpEntryCount();  // Number of SPMP entries available
   
-  foreach (i from 0 to 63) {
+  foreach (sw_idx from 0 to (spmp_count - 1)) {
+    let hw_idx = spmpSwToHwIndex(sw_idx);  // Convert to hardware index
+    
     /* Get previous address for TOR mode (entry 0 uses address 0) */
-    let prev_spmpaddr = if i > 0 then {
-      let (_, prev_addr) = spmpGetEntry(i - 1);
-      prev_addr
+    let prev_spmpaddr = if sw_idx > 0 then {
+      let prev_hw_idx = spmpSwToHwIndex(sw_idx - 1);
+      if prev_hw_idx < 64 then spmpaddr_n[prev_hw_idx] else zeros()
     } else zeros();
     
     /* Get current entry configuration and address */
-    let (cfg, spmpaddr) = spmpGetEntry(i);
+    let (cfg, spmpaddr) = if hw_idx < 64 then (spmpcfg_n[hw_idx], spmpaddr_n[hw_idx]) else (spmpcfg_n[0], zeros());
     
     /* Check if this entry is delegated (enabled/configured) */
     let is_delegated = spmpAddrMatchType_of_bits(cfg[A]) != OFF;
     has_delegated_entries = has_delegated_entries | is_delegated;
     
-    /* Check if entry is active considering spmpswitch optimization (Section 2.8) */
+    /* Check if entry is active considering spmpswitch optimization */
     let is_active = if is_delegated & hw_idx < 64 then {
       spmpEntryActive(hw_idx)  // Use the helper function directly for valid indices
     } else false;
@@ -519,7 +523,7 @@ function spmpCheck forall 'n, 0 < 'n <= max_mem_access . (
 
 /* Initialize SPMP to safe default state.
  * 
- * Per  Section 6.1: SPMP should be initialized to allow all
+ * SPMP should be initialized to allow all
  * access by default to maintain compatibility with existing software.
  * 
  * Reset behavior:
@@ -533,15 +537,16 @@ function spmpCheck forall 'n, 0 < 'n <= max_mem_access . (
  * NOTE: This function should only be called during system reset or by M-mode code.
  * The L bit can only be cleared by M-mode or hardware reset. */
 function reset_spmp() -> unit = {
-  /* Reset all 64 SPMP entries to OFF state */
-  foreach (i from 0 to 63) {
+  /* Reset only hardware resources allocated to SPMP (from getPmpNum() to 63) */
+  let spmp_start = getPmpNum();
+  foreach (hw_idx from spmp_start to 63) {
     // On reset the SPMP register's A field is set to OFF (disabled) and L bit is cleared.
     // This is the only way to clear L bits after they have been set.
-    spmpcfg_n[i] = [spmpcfg_n[i] with A = spmpAddrMatchType_to_bits(OFF), L = 0b0, S = 0b0, X = 0b0, W = 0b0, R = 0b0];
-    spmpaddr_n[i] = zeros();
+    spmpcfg_n[hw_idx] = [spmpcfg_n[hw_idx] with A = spmpAddrMatchType_to_bits(OFF), L = 0b0, S = 0b0, X = 0b0, W = 0b0, R = 0b0];
+    spmpaddr_n[hw_idx] = zeros();
   };
 
-  /* Reset SPMP switch registers - must be cleared on reset per Section 2.8 */
+  /* Reset SPMP switch registers - must be cleared on reset */
   spmpSwitchReset();
 
   /* After reset, SPMP allows all access by default.
