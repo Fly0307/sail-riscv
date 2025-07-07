@@ -350,8 +350,8 @@ function accessToSpmpFault(acc : AccessType(ext_access_type)) -> ExceptionType =
  * This function provides unified access across all entries for the
  * main SPMP checking loop. */
 function spmpGetEntry(i: nat) -> (Spmpcfg_ent, xlenbits) = {
-  if i < 64 then (spmpcfg_n[i], spmpaddr_n[i])
-  else (spmpcfg_n[0], zeros())  // fallback case
+  if i < 64 then (spmp_read_cfg_indirect(i), spmp_read_addr_indirect(i))
+  else (Mk_Spmpcfg_ent(0x00), zeros())  // fallback case
 }
 
 /* SPMP Context Switch Optimization Helper Functions */
@@ -366,7 +366,7 @@ function spmpGetEntry(i: nat) -> (Spmpcfg_ent, xlenbits) = {
  * - TOR entries match regardless of spmpswitch[i-1] value
  */
 function spmpEntryActive(idx: range(0, 63)) -> bool = {
-  let cfg = spmpcfg_n[idx];
+  let cfg = spmp_read_cfg_indirect(idx);
   let match_type = spmpAddrMatchType_of_bits(cfg[A]);
   let switch_bit = if xlen == 32 then {
     if idx < 32 then spmpswitch[idx] else spmpswitchh[idx - 32]
@@ -497,11 +497,11 @@ function spmpCheck forall 'n, 0 < 'n <= max_mem_access . (
     /* Get previous address for TOR mode (entry 0 uses address 0) */
     let prev_spmpaddr = if sw_idx > 0 then {
       let prev_hw_idx = spmpSwToHwIndex(sw_idx - 1);
-      if prev_hw_idx < 64 then spmpaddr_n[prev_hw_idx] else zeros()
+      if prev_hw_idx < 64 then spmp_read_addr_indirect(prev_hw_idx) else zeros()
     } else zeros();
     
     /* Get current entry configuration and address */
-    let (cfg, spmpaddr) = if hw_idx < 64 then (spmpcfg_n[hw_idx], spmpaddr_n[hw_idx]) else (spmpcfg_n[0], zeros());
+    let (cfg, spmpaddr) = if hw_idx < 64 then (spmp_read_cfg_indirect(hw_idx), spmp_read_addr_indirect(hw_idx)) else (Mk_Spmpcfg_ent(0x00), zeros());
     
     /* Check if this entry is delegated (enabled/configured) */
     let is_delegated = spmpAddrMatchType_of_bits(cfg[A]) != OFF;
@@ -568,8 +568,9 @@ function reset_spmp() -> unit = {
   foreach (hw_idx from spmp_start to 63) {
     // On reset the SPMP register's A field is set to OFF (disabled) and L bit is cleared.
     // This is the only way to clear L bits after they have been set.
-    spmpcfg_n[hw_idx] = [spmpcfg_n[hw_idx] with A = spmpAddrMatchType_to_bits(OFF), L = 0b0, S = 0b0, X = 0b0, W = 0b0, R = 0b0];
-    spmpaddr_n[hw_idx] = zeros();
+    let reset_cfg = Mk_Spmpcfg_ent(0x00);  // All bits cleared
+    spmp_mmode_write_cfg_indirect(hw_idx, reset_cfg);
+    spmp_write_addr_indirect(hw_idx, zeros());
   };
 
   /* Reset SPMP switch registers - must be cleared on reset */
@@ -589,7 +590,9 @@ function reset_spmp() -> unit = {
 function spmpUnlock(n: range(0, 63)) -> unit = {
   // Only M-mode can unlock entries
   if cur_privilege == Machine then {
-    spmpcfg_n[n] = [spmpcfg_n[n] with L = 0b0];
+    let cfg = spmp_read_cfg_indirect(n);
+    let unlocked_cfg = [cfg with L = 0b0];
+    spmp_mmode_write_cfg_indirect(n, unlocked_cfg);
   }
 }
 

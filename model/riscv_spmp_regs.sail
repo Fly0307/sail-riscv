@@ -40,23 +40,36 @@ let sys_spmp_count : nat = config memory.spmp.count       // Number of SPMP entr
 /*    [1]: W - Write permission                                                         */
 /*    [0]: R - Read permission                                                          */
 /*=======================================================================================*/
+/*  SPMP CSR Name Mappings - REMOVED                                                    */
+/*                                                                                       */
+/*  SPMP CSRs are now accessed indirectly through siselect/sireg interface:            */
+/*  - siselect[11:0] = entry_index (0-63)                                              */
+/*  - sireg  = spmpaddr[entry_index]                                                   */
+/*  - sireg2 = spmpcfg[entry_index]                                                    */
+/*                                                                                       */
+/*  Direct CSR access via 0x1A0-0x1EF addresses is disabled in favor of               */
+/*  indirect access for better performance and context switching.                      */
+/*=======================================================================================*/
 
-mapping clause csr_name_map = 0x1A0  <-> "spmpcfg0"   // SPMP config entries 0-7 (RV64) or 0-3 (RV32)
-mapping clause csr_name_map = 0x1A1  <-> "spmpcfg1"   // SPMP config entries 4-7 (RV32 only)
-mapping clause csr_name_map = 0x1A2  <-> "spmpcfg2"   // SPMP config entries 8-15 (RV64) or 8-11 (RV32)
-mapping clause csr_name_map = 0x1A3  <-> "spmpcfg3"   // SPMP config entries 12-15 (RV32 only)
-mapping clause csr_name_map = 0x1A4  <-> "spmpcfg4"   // SPMP config entries 16-23 (RV64) or 16-19 (RV32)
-mapping clause csr_name_map = 0x1A5  <-> "spmpcfg5"   // SPMP config entries 20-23 (RV32 only)
-mapping clause csr_name_map = 0x1A6  <-> "spmpcfg6"   // SPMP config entries 24-31 (RV64) or 24-27 (RV32)
-mapping clause csr_name_map = 0x1A7  <-> "spmpcfg7"   // SPMP config entries 28-31 (RV32 only)
-mapping clause csr_name_map = 0x1A8  <-> "spmpcfg8"   // SPMP config entries 32-39 (RV64) or 32-35 (RV32)
-mapping clause csr_name_map = 0x1A9  <-> "spmpcfg9"   // SPMP config entries 36-39 (RV32 only)
-mapping clause csr_name_map = 0x1AA  <-> "spmpcfg10"  // SPMP config entries 40-47 (RV64) or 40-43 (RV32)
-mapping clause csr_name_map = 0x1AB  <-> "spmpcfg11"  // SPMP config entries 44-47 (RV32 only)
-mapping clause csr_name_map = 0x1AC  <-> "spmpcfg12"  // SPMP config entries 48-55 (RV64) or 48-51 (RV32)
-mapping clause csr_name_map = 0x1AD  <-> "spmpcfg13"  // SPMP config entries 52-55 (RV32 only)
-mapping clause csr_name_map = 0x1AE  <-> "spmpcfg14"  // SPMP config entries 56-63 (RV64) or 56-59 (RV32)
-mapping clause csr_name_map = 0x1AF  <-> "spmpcfg15"  // SPMP config entries 60-63 (RV32 only)
+/*
+// SPMP configuration registers (0x1A0-0x1AF) - REMOVED
+mapping clause csr_name_map = 0x1A0  <-> "spmpcfg0"   
+mapping clause csr_name_map = 0x1A1  <-> "spmpcfg1"   
+mapping clause csr_name_map = 0x1A2  <-> "spmpcfg2"   
+mapping clause csr_name_map = 0x1A3  <-> "spmpcfg3"   
+mapping clause csr_name_map = 0x1A4  <-> "spmpcfg4"   
+mapping clause csr_name_map = 0x1A5  <-> "spmpcfg5"   
+mapping clause csr_name_map = 0x1A6  <-> "spmpcfg6"   
+mapping clause csr_name_map = 0x1A7  <-> "spmpcfg7"   
+mapping clause csr_name_map = 0x1A8  <-> "spmpcfg8"   
+mapping clause csr_name_map = 0x1A9  <-> "spmpcfg9"   
+mapping clause csr_name_map = 0x1AA  <-> "spmpcfg10"  
+mapping clause csr_name_map = 0x1AB  <-> "spmpcfg11"  
+mapping clause csr_name_map = 0x1AC  <-> "spmpcfg12"  
+mapping clause csr_name_map = 0x1AD  <-> "spmpcfg13"  
+mapping clause csr_name_map = 0x1AE  <-> "spmpcfg14"  
+mapping clause csr_name_map = 0x1AF  <-> "spmpcfg15"  
+*/
 
 /*=======================================================================================*/
 /*  SPMP Address Register CSR Name Mappings (0x1B0-0x1EF)                              */
@@ -68,33 +81,35 @@ mapping clause csr_name_map = 0x1AF  <-> "spmpcfg15"  // SPMP config entries 60-
 /*    - NA4/NAPOT: Base address with mode-specific encoding                             */
 /*=======================================================================================*/
 
-mapping clause csr_name_map = 0x1B0  <-> "spmpaddr0"   // SPMP address register 0
-mapping clause csr_name_map = 0x1B1  <-> "spmpaddr1"   // SPMP address register 1
-mapping clause csr_name_map = 0x1B2  <-> "spmpaddr2"   // SPMP address register 2
-mapping clause csr_name_map = 0x1B3  <-> "spmpaddr3"   // SPMP address register 3
-mapping clause csr_name_map = 0x1B4  <-> "spmpaddr4"   // SPMP address register 4
-mapping clause csr_name_map = 0x1B5  <-> "spmpaddr5"   // SPMP address register 5
-mapping clause csr_name_map = 0x1B6  <-> "spmpaddr6"   // SPMP address register 6
-mapping clause csr_name_map = 0x1B7  <-> "spmpaddr7"   // SPMP address register 7
-mapping clause csr_name_map = 0x1B8  <-> "spmpaddr8"   // SPMP address register 8
-mapping clause csr_name_map = 0x1B9  <-> "spmpaddr9"   // SPMP address register 9
-mapping clause csr_name_map = 0x1BA  <-> "spmpaddr10"  // SPMP address register 10
-mapping clause csr_name_map = 0x1BB  <-> "spmpaddr11"  // SPMP address register 11
-mapping clause csr_name_map = 0x1BC  <-> "spmpaddr12"  // SPMP address register 12
-mapping clause csr_name_map = 0x1BD  <-> "spmpaddr13"  // SPMP address register 13
-mapping clause csr_name_map = 0x1BE  <-> "spmpaddr14"  // SPMP address register 14
-mapping clause csr_name_map = 0x1BF  <-> "spmpaddr15"  // SPMP address register 15
-mapping clause csr_name_map = 0x1C0  <-> "spmpaddr16"  // SPMP address register 16
-mapping clause csr_name_map = 0x1C1  <-> "spmpaddr17"  // SPMP address register 17
-mapping clause csr_name_map = 0x1C2  <-> "spmpaddr18"  // SPMP address register 18
-mapping clause csr_name_map = 0x1C3  <-> "spmpaddr19"  // SPMP address register 19
-mapping clause csr_name_map = 0x1C4  <-> "spmpaddr20"  // SPMP address register 20
-mapping clause csr_name_map = 0x1C5  <-> "spmpaddr21"  // SPMP address register 21
-mapping clause csr_name_map = 0x1C6  <-> "spmpaddr22"  // SPMP address register 22
-mapping clause csr_name_map = 0x1C7  <-> "spmpaddr23"  // SPMP address register 23
-mapping clause csr_name_map = 0x1C8  <-> "spmpaddr24"  // SPMP address register 24
-mapping clause csr_name_map = 0x1C9  <-> "spmpaddr25"  // SPMP address register 25
-mapping clause csr_name_map = 0x1CA  <-> "spmpaddr26"  // SPMP address register 26
+/*
+// SPMP address registers (0x1B0-0x1EF) - REMOVED
+mapping clause csr_name_map = 0x1B0  <-> "spmpaddr0"   
+mapping clause csr_name_map = 0x1B1  <-> "spmpaddr1"   
+mapping clause csr_name_map = 0x1B2  <-> "spmpaddr2"   
+mapping clause csr_name_map = 0x1B3  <-> "spmpaddr3"   
+mapping clause csr_name_map = 0x1B4  <-> "spmpaddr4"   
+mapping clause csr_name_map = 0x1B5  <-> "spmpaddr5"   
+mapping clause csr_name_map = 0x1B6  <-> "spmpaddr6"   
+mapping clause csr_name_map = 0x1B7  <-> "spmpaddr7"   
+mapping clause csr_name_map = 0x1B8  <-> "spmpaddr8"   
+mapping clause csr_name_map = 0x1B9  <-> "spmpaddr9"   
+mapping clause csr_name_map = 0x1BA  <-> "spmpaddr10"  
+mapping clause csr_name_map = 0x1BB  <-> "spmpaddr11"  
+mapping clause csr_name_map = 0x1BC  <-> "spmpaddr12"  
+mapping clause csr_name_map = 0x1BD  <-> "spmpaddr13"  
+mapping clause csr_name_map = 0x1BE  <-> "spmpaddr14"  
+mapping clause csr_name_map = 0x1BF  <-> "spmpaddr15"  
+mapping clause csr_name_map = 0x1C0  <-> "spmpaddr16"  
+mapping clause csr_name_map = 0x1C1  <-> "spmpaddr17"  
+mapping clause csr_name_map = 0x1C2  <-> "spmpaddr18"  
+mapping clause csr_name_map = 0x1C3  <-> "spmpaddr19"  
+mapping clause csr_name_map = 0x1C4  <-> "spmpaddr20"  
+mapping clause csr_name_map = 0x1C5  <-> "spmpaddr21"  
+mapping clause csr_name_map = 0x1C6  <-> "spmpaddr22"  
+mapping clause csr_name_map = 0x1C7  <-> "spmpaddr23"  
+mapping clause csr_name_map = 0x1C8  <-> "spmpaddr24"  
+mapping clause csr_name_map = 0x1C9  <-> "spmpaddr25"  
+mapping clause csr_name_map = 0x1CA  <-> "spmpaddr26"  
 mapping clause csr_name_map = 0x1CB  <-> "spmpaddr27"
 mapping clause csr_name_map = 0x1CC  <-> "spmpaddr28"
 mapping clause csr_name_map = 0x1CD  <-> "spmpaddr29"
@@ -132,6 +147,7 @@ mapping clause csr_name_map = 0x1EC  <-> "spmpaddr60"
 mapping clause csr_name_map = 0x1ED  <-> "spmpaddr61"
 mapping clause csr_name_map = 0x1EE  <-> "spmpaddr62"
 mapping clause csr_name_map = 0x1EF  <-> "spmpaddr63"
+*/
 
 mapping clause csr_name_map = 0x1F0  <-> "spmpswitch" // SPMP domain switch register
 mapping clause csr_name_map = 0x1F1  <-> "spmpswitchh" // SPMP domain switch register high (RV32 only)
@@ -200,6 +216,77 @@ bitfield Spmpcfg_ent : bits(8) = {
 register spmpcfg_n : vector(64, Spmpcfg_ent)
 register spmpaddr_n : vector(64, xlenbits)
 
+/*=======================================================================================*/
+/*  SPMP Indirect CSR Access Functions                                                  */
+/*                                                                                       */
+/*  These functions implement the indirect CSR access mechanism for SPMP:               */
+/*  - siselect[11:0] = entry_index (0-63)                                              */
+/*  - sireg  = spmpaddr[entry_index] (indirect address access)                         */
+/*  - sireg2 = spmpcfg[entry_index]  (indirect configuration access)                   */
+/*                                                                                       */
+/*  Access Rules:                                                                        */
+/*  - S-mode can set spmp[i]cfg.L to lock an SPMP entry                               */
+/*  - When spmp[i]cfg.L is set, SPMP writes via siselect are ignored                   */
+/*  - Only M-mode access via miselect can reset spmp[i]cfg.L                          */
+/*=======================================================================================*/
+
+// enum IregType = { Mireg, Sireg }
+
+/* Indirect CSR access functions - these will be used by the SPMP module */
+/* to access SPMP registers instead of direct array access */
+
+/* Read SPMP address register via indirect access */
+function spmp_read_addr_indirect(entry_idx: nat) -> xlenbits = {
+  if entry_idx < 64 then {
+    let old_siselect = read_CSR(0x150);
+    let _ = write_CSR(0x150, zero_extend(to_bits(12, entry_idx)));
+    let result = read_CSR(0x151);  // Read sireg (spmpaddr[entry_idx])
+    let _ = write_CSR(0x150, old_siselect);
+    result
+  } else zeros()
+}
+
+/* Read SPMP configuration register via indirect access */
+function spmp_read_cfg_indirect(entry_idx: nat) -> Spmpcfg_ent = {
+  if entry_idx < 64 then {
+    let old_siselect = read_CSR(0x150);
+    let _ = write_CSR(0x150, zero_extend(to_bits(12, entry_idx)));
+    let result = read_CSR(0x152);  // Read sireg2 (spmpcfg[entry_idx])
+    let _ = write_CSR(0x150, old_siselect);
+    Mk_Spmpcfg_ent(result[7..0])
+  } else Mk_Spmpcfg_ent(0x00)
+}
+
+/* Write SPMP address register via indirect access */
+function spmp_write_addr_indirect(entry_idx: nat, value: xlenbits) -> unit = {
+  if entry_idx < 64 then {
+    let old_siselect = read_CSR(0x150);
+    let _ = write_CSR(0x150, zero_extend(to_bits(12, entry_idx)));
+    let _ = write_CSR(0x151, value);  // Write sireg (spmpaddr[entry_idx])
+    let _ = write_CSR(0x150, old_siselect);
+  }
+}
+
+/* Write SPMP configuration register via indirect access */
+function spmp_write_cfg_indirect(entry_idx: nat, cfg: Spmpcfg_ent) -> unit = {
+  if entry_idx < 64 then {
+    let old_siselect = read_CSR(0x150);
+    let _ = write_CSR(0x150, zero_extend(to_bits(12, entry_idx)));
+    let _ = write_CSR(0x152, zero_extend(cfg.bits));  // Write sireg2 (spmpcfg[entry_idx])
+    let _ = write_CSR(0x150, old_siselect);
+  }
+}
+
+/* M-mode versions for L bit control */
+function spmp_mmode_write_cfg_indirect(entry_idx: nat, cfg: Spmpcfg_ent) -> unit = {
+  if entry_idx < 64 then {
+    let old_miselect = read_CSR(0x350);
+    let _ = write_CSR(0x350, zero_extend(to_bits(12, entry_idx)));
+    let _ = write_CSR(0x352, zero_extend(cfg.bits));  // Write mireg2 (spmpcfg[entry_idx])
+    let _ = write_CSR(0x350, old_miselect);
+  }
+}
+
 
 /* Packing and unpacking spmpcfg regs for xlen-width accesses */
 
@@ -213,10 +300,10 @@ function spmpReadCfgReg(n : range(0, 15)) -> xlenbits = {
     let hw_idx3 = spmpSwToHwIndex(base_idx + 3);
     // Ensure indices are within bounds
     if hw_idx3 < 64 & hw_idx2 < 64 & hw_idx1 < 64 & hw_idx0 < 64 then {
-      spmpcfg_n[hw_idx3].bits @
-      spmpcfg_n[hw_idx2].bits @
-      spmpcfg_n[hw_idx1].bits @
-      spmpcfg_n[hw_idx0].bits
+      spmp_read_cfg_indirect(hw_idx3).bits @
+      spmp_read_cfg_indirect(hw_idx2).bits @
+      spmp_read_cfg_indirect(hw_idx1).bits @
+      spmp_read_cfg_indirect(hw_idx0).bits
     } else {
       zeros()
     }
@@ -235,14 +322,14 @@ function spmpReadCfgReg(n : range(0, 15)) -> xlenbits = {
     // Ensure indices are within bounds
     if hw_idx7 < 64 & hw_idx6 < 64 & hw_idx5 < 64 & hw_idx4 < 64 & 
        hw_idx3 < 64 & hw_idx2 < 64 & hw_idx1 < 64 & hw_idx0 < 64 then {
-      spmpcfg_n[hw_idx7].bits @
-      spmpcfg_n[hw_idx6].bits @
-      spmpcfg_n[hw_idx5].bits @
-      spmpcfg_n[hw_idx4].bits @
-      spmpcfg_n[hw_idx3].bits @
-      spmpcfg_n[hw_idx2].bits @
-      spmpcfg_n[hw_idx1].bits @
-      spmpcfg_n[hw_idx0].bits
+      spmp_read_cfg_indirect(hw_idx7).bits @
+      spmp_read_cfg_indirect(hw_idx6).bits @
+      spmp_read_cfg_indirect(hw_idx5).bits @
+      spmp_read_cfg_indirect(hw_idx4).bits @
+      spmp_read_cfg_indirect(hw_idx3).bits @
+      spmp_read_cfg_indirect(hw_idx2).bits @
+      spmp_read_cfg_indirect(hw_idx1).bits @
+      spmp_read_cfg_indirect(hw_idx0).bits
     } else {
       zeros()
     }
@@ -294,7 +381,9 @@ function spmpWriteCfgReg(n : range(0, 15), v : xlenbits) -> unit = {
       let sw_idx = n*4 + i;
       let hw_idx = spmpSwToHwIndex(sw_idx);
       if hw_idx < 64 then {
-        spmpcfg_n[hw_idx] = spmpWriteCfg(hw_idx, spmpcfg_n[hw_idx], v[8*i+7 .. 8*i], cur_privilege);
+        let current_cfg = spmp_read_cfg_indirect(hw_idx);
+        let new_cfg = spmpWriteCfg(hw_idx, current_cfg, v[8*i+7 .. 8*i], cur_privilege);
+        spmp_write_cfg_indirect(hw_idx, new_cfg);
       }
     }
   }
@@ -304,7 +393,9 @@ function spmpWriteCfgReg(n : range(0, 15), v : xlenbits) -> unit = {
       let sw_idx = n*4 + i;
       let hw_idx = spmpSwToHwIndex(sw_idx);
       if hw_idx < 64 then {
-        spmpcfg_n[hw_idx] = spmpWriteCfg(hw_idx, spmpcfg_n[hw_idx], v[8*i+7 .. 8*i], cur_privilege);
+        let current_cfg = spmp_read_cfg_indirect(hw_idx);
+        let new_cfg = spmpWriteCfg(hw_idx, current_cfg, v[8*i+7 .. 8*i], cur_privilege);
+        spmp_write_cfg_indirect(hw_idx, new_cfg);
       }
     }
   }
@@ -333,13 +424,19 @@ function spmpWriteAddrReg(n : range(0, 63), v : xlenbits) -> unit = {
   // Get current privilege for L bit access control
   let priv = cur_privilege;
   
-  spmpaddr_n[n] = spmpWriteAddr(
-    spmpLocked(spmpcfg_n[n]),
-    if n + 1 < 64 then spmpTORLocked(spmpcfg_n[n + 1]) else false,
-    spmpaddr_n[n],
+  let current_cfg = spmp_read_cfg_indirect(n);
+  let next_cfg = if n + 1 < 64 then spmp_read_cfg_indirect(n + 1) else Mk_Spmpcfg_ent(0x00);
+  let current_addr = spmp_read_addr_indirect(n);
+  
+  let new_addr = spmpWriteAddr(
+    spmpLocked(current_cfg),
+    if n + 1 < 64 then spmpTORLocked(next_cfg) else false,
+    current_addr,
     v,
     priv
   );
+  
+  spmp_write_addr_indirect(n, new_addr);
 }
 
 
@@ -382,9 +479,10 @@ function spmpSwitchReset() -> unit = {
   spmpswitchh = 0x00000000;
 }
 
-/* SPMP CSRs */
+/* SPMP CSRs - Direct access removed, now using indirect access via siselect/sireg */
 
-// spmpcfgN
+/*
+// spmpcfgN - REMOVED (now accessed via siselect/sireg2)
 function clause is_CSR_defined(0x1A) @ idx : bits(4) = {
   let cfg_idx = unsigned(idx);
   let spmp_entries = getSpmpEntryCount();
@@ -398,8 +496,7 @@ function clause write_CSR((0x1A @ idx : bits(4), value) if idx[0] == bitzero | x
   spmpReadCfgReg(idx)
 }
 
-// spmpaddrN. Unfortunately the SPMP index does not nicely align with the CSR index bits.
-// The SPMP addresses use hardware resources starting from getPmpNum()
+// spmpaddrN - REMOVED (now accessed via siselect/sireg)
 function clause is_CSR_defined(0x1B) @ idx : bits(4) = {
   let addr_idx = unsigned(0b00 @ idx);
   sys_spmp_enabled & (addr_idx < getSpmpEntryCount())
@@ -478,6 +575,4 @@ function clause write_CSR(0x1E @ idx : bits(4), value) = {
     zeros()
   }
 }
-
-
-
+*/

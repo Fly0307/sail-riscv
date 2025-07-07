@@ -63,20 +63,20 @@ function spmp_isInstructionFetch(acc: AccessType(ext_access_type)) -> bool = {
  * 
  * Returns: Configuration entry for the specified index */
 function spmpGetCfg(i: nat) -> Spmpcfg_ent = {
-  if i < 64 then spmpcfg_n[i] else spmpcfg_n[0]  // fallback case
+  if i < 64 then spmp_read_cfg_indirect(i) else Mk_Spmpcfg_ent(0x00)  // fallback case
 }
 
 /* Helper function to get SPMP address entry by index */
 function spmpGetAddr(i: nat) -> xlenbits = {
-  if i < 64 then spmpaddr_n[i] else zeros()  // fallback case
+  if i < 64 then spmp_read_addr_indirect(i) else zeros()  // fallback case
 }
 
 /* Helper function to set SPMP configuration entry */
 function spmpSetCfg(i: nat, cfg: Spmpcfg_ent) -> unit = {
-  if i < 64 then spmpcfg_n[i] = cfg else ()  // fallback case - do nothing
+  if i < 64 then spmp_write_cfg_indirect(i, cfg) else ()  // fallback case - do nothing
 }
 
 /* Helper function to set SPMP address entry */  
 function spmpSetAddr(i: nat, addr: xlenbits) -> unit = {
-  if i < 64 then spmpaddr_n[i] = addr else ()  // fallback case - do nothing
+  if i < 64 then spmp_write_addr_indirect(i, addr) else ()  // fallback case - do nothing
 }
