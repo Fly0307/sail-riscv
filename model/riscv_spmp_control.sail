@@ -25,7 +25,7 @@ type spmp_addr_range = option((xlenbits, xlenbits))
  *   - TOR: Top-of-Range, matches [prev_spmpaddr*4, spmpaddr*4)
  *   - NA4: Naturally aligned 4-byte region
  *   - NAPOT: Naturally aligned power-of-two region */
-function spmpAddrRange(cfg: Spmpcfg_ent, spmpaddr: xlenbits, prev_spmpaddr: xlenbits) -> spmp_addr_range = {
+function spmpAddrRange(cfg: Spmpcfg_ent, spmpaddr: xlenbits, prev_spmpaddr: xlenbits, entry_index: nat) -> spmp_addr_range = {
   match spmpAddrMatchType_of_bits(cfg[A]) {
     /* OFF: Entry disabled - no address matching*/
     OFF   => None(),
@@ -33,11 +33,12 @@ function spmpAddrRange(cfg: Spmpcfg_ent, spmpaddr: xlenbits, prev_spmpaddr: xlen
     /* TOR: Top-of-Range addressing
      * Matches addresses in range [prev_spmpaddr*4, spmpaddr*4)
      * If prev_spmpaddr >= spmpaddr, no addresses match (invalid range) */
-    TOR   => {
-      // Per spec: "If spmpaddr[i-1] >= spmpaddr[i] and spmpcfg[i].A=TOR, then SPMP entry i matches no addresses."
-      if prev_spmpaddr >=_u spmpaddr
-      then None()  // Invalid range
-      else Some((prev_spmpaddr << 2, spmpaddr << 2))  // Convert to byte addresses
+    TOR => {
+      // Special case: For entry 0 with TOR mode, use zero as lower bound
+      let lower_bound = if entry_index == 0 then zeros() else prev_spmpaddr;
+      if lower_bound >=_u spmpaddr
+      then None()
+      else Some((lower_bound << 2, spmpaddr << 2))
     },
     
     /* NA4: Naturally Aligned 4-byte region
@@ -145,7 +146,7 @@ function spmpCheckRWX(ent, acc, priv) = {
           Read(_) => ent[X] == 0b1,  // U-mode has R permission if X=1
           Write(_) => false,         // Not writable
           ReadWrite(_) => false,
-          InstructionFetch() => if ent[X] == 0b1 then true else true  // Execute-only if X=0, RX if X=1
+          InstructionFetch() => ent[X] == 0b1 // Execute-only if X=0, RX if X=1
         }
       },
       
@@ -296,10 +297,10 @@ enum spmpMatch = {SPMP_Success, SPMP_Continue, SPMP_Fail}
  *   SPMP_Fail: Access denied by this entry  
  *   SPMP_Continue: This entry doesn't match, check next entry */
 function spmpMatchEntry(Physaddr(addr): physaddr, width: xlenbits, acc: AccessType(ext_access_type), priv: Privilege,
-                       ent: Spmpcfg_ent, spmpaddr: xlenbits, prev_spmpaddr: xlenbits) -> spmpMatch = {
+                       ent: Spmpcfg_ent, spmpaddr: xlenbits, prev_spmpaddr: xlenbits, entry_index: nat) -> spmpMatch = {
   let addr = unsigned(addr);
   let width = unsigned(width);
-  let rng = spmpAddrRange(ent, spmpaddr, prev_spmpaddr);
+  let rng = spmpAddrRange(ent, spmpaddr, prev_spmpaddr, entry_index);
   match spmpMatchAddr(addr, width, rng) {
     SPMP_NoMatch      => SPMP_Continue,     // No match, try next entry
     SPMP_PartialMatch => SPMP_Fail,         // Partial match is violation
@@ -365,13 +366,12 @@ function spmpGetEntry(i: nat) -> (Spmpcfg_ent, xlenbits) = {
  * - When spmpswitch[i] == 0 and spmp[i]cfg.L == 1, entry i remains enabled
  * - TOR entries match regardless of spmpswitch[i-1] value
  */
-function spmpEntryActive(idx: range(0, 63)) -> bool = {
-  let cfg = spmp_read_cfg_indirect(idx);
+function spmpEntryActive(hw_idx: range(0, 63), cfg: Spmpcfg_ent) -> bool = {
   let match_type = spmpAddrMatchType_of_bits(cfg[A]);
   let switch_bit = if xlen == 32 then {
-    if idx < 32 then spmpswitch[idx] else spmpswitchh[idx - 32]
+    if hw_idx < 32 then spmpswitch[hw_idx] else spmpswitchh[hw_idx - 32]
   } else {
-    spmpswitch[idx]
+    spmpswitch[hw_idx]
   };
 
   // Special case: locked entries remain enabled even when switch bit is 0
@@ -491,25 +491,24 @@ function spmpCheck forall 'n, 0 < 'n <= max_mem_access . (
   let spmp_start = getPmpNum();  // First hardware resource allocated to SPMP
   let spmp_count = getSpmpEntryCount();  // Number of SPMP entries available
   
+  var prev_spmpaddr : xlenbits = zeros();  // Previous address for TOR mode
+  
   foreach (sw_idx from 0 to (spmp_count - 1)) {
     let hw_idx = spmpSwToHwIndex(sw_idx);  // Convert to hardware index
     
-    /* Get previous address for TOR mode (entry 0 uses address 0) */
-    let prev_spmpaddr = if sw_idx > 0 then {
-      let prev_hw_idx = spmpSwToHwIndex(sw_idx - 1);
-      if prev_hw_idx < 64 then spmp_read_addr_indirect(prev_hw_idx) else zeros()
-    } else zeros();
+    /* Get current entry configuration and address using helper function */
+    let (cfg, spmpaddr) = spmpGetEntry(sw_idx);
     
-    /* Get current entry configuration and address */
-    let (cfg, spmpaddr) = if hw_idx < 64 then (spmp_read_cfg_indirect(hw_idx), spmp_read_addr_indirect(hw_idx)) else (Mk_Spmpcfg_ent(0x00), zeros());
+    /* For TOR mode: sw_idx=0 uses 0 as lower bound, others use previous entry */
+    let current_prev_addr = if sw_idx == 0 then zeros() else prev_spmpaddr;
     
     /* Check if this entry is delegated (enabled/configured) */
     let is_delegated = spmpAddrMatchType_of_bits(cfg[A]) != OFF;
     has_delegated_entries = has_delegated_entries | is_delegated;
     
-    /* Check if entry is active considering spmpswitch optimization */
+    /* Check if entry is active - use spmpEntryActive function with hardware index and config */
     let is_active = if is_delegated & hw_idx < 64 then {
-      spmpEntryActive(hw_idx)  // Use the helper function directly for valid indices
+      spmpEntryActive(hw_idx, cfg)  // Use helper function with hardware index and config
     } else false;
     
     /* Only check active entries for address matching */
@@ -518,7 +517,7 @@ function spmpCheck forall 'n, 0 < 'n <= max_mem_access . (
       let Physaddr(addr_bits) = addr;
       let addr_nat = unsigned(addr_bits);
       let width_nat = unsigned(width);
-      let rng = spmpAddrRange(cfg, spmpaddr, prev_spmpaddr);
+      let rng = spmpAddrRange(cfg, spmpaddr, current_prev_addr, sw_idx);
       
       match spmpMatchAddr(addr_nat, width_nat, rng) {
         SPMP_NoMatch      => (),  // Continue to next entry
@@ -530,7 +529,10 @@ function spmpCheck forall 'n, 0 < 'n <= max_mem_access . (
                  else Some(accessToSpmpFault(acc))  // Access denied
         }
       }
-    }
+    };
+    
+    /* Update previous address for next iteration */
+    prev_spmpaddr = spmpaddr;
   };
 
   /* Rule 3: No SPMP entry matched, check delegation status */

@@ -50,7 +50,6 @@ let sys_spmp_count : nat = config memory.spmp.count       // Number of SPMP entr
 /*  Direct CSR access via 0x1A0-0x1EF addresses is disabled in favor of               */
 /*  indirect access for better performance and context switching.                      */
 /*=======================================================================================*/
-
 /*
 // SPMP configuration registers (0x1A0-0x1AF) - REMOVED
 mapping clause csr_name_map = 0x1A0  <-> "spmpcfg0"   
@@ -234,56 +233,151 @@ register spmpaddr_n : vector(64, xlenbits)
 
 /* Indirect CSR access functions - these will be used by the SPMP module */
 /* to access SPMP registers instead of direct array access */
-
-/* Read SPMP address register via indirect access */
-function spmp_read_addr_indirect(entry_idx: nat) -> xlenbits = {
-  if entry_idx < 64 then {
-    let old_siselect = read_CSR(0x150);
-    let _ = write_CSR(0x150, zero_extend(to_bits(12, entry_idx)));
-    let result = read_CSR(0x151);  // Read sireg (spmpaddr[entry_idx])
-    let _ = write_CSR(0x150, old_siselect);
-    result
-  } else zeros()
+/* Get valid SPMP entry range based on delegation */
+function getSpmpValidRange() -> (nat, nat) = {
+  let pmp_count = getPmpNum();           
+  let total_resources = 64;              
+  let spmp_start = pmp_count;             
+  let spmp_count = total_resources - pmp_count;  
+  // Ensure we don't return negative values for nat type
+  if spmp_count <= 0 then (0, 0)
+  else (0, spmp_count - 1)               // [0, spmp_count-1]
 }
 
-/* Read SPMP configuration register via indirect access */
-function spmp_read_cfg_indirect(entry_idx: nat) -> Spmpcfg_ent = {
-  if entry_idx < 64 then {
-    let old_siselect = read_CSR(0x150);
-    let _ = write_CSR(0x150, zero_extend(to_bits(12, entry_idx)));
-    let result = read_CSR(0x152);  // Read sireg2 (spmpcfg[entry_idx])
-    let _ = write_CSR(0x150, old_siselect);
-    Mk_Spmpcfg_ent(result[7..0])
-  } else Mk_Spmpcfg_ent(0x00)
+/* Check if SPMP entry index is valid for current privilege */
+function spmpCheckEntryAccess(entry_idx: range(0, 4095), priv: Privilege) -> bool = {
+  let (min_idx, max_idx) = getSpmpValidRange();
+  (entry_idx >= min_idx) & (entry_idx <= max_idx)
+}
+
+/* Read SPMP address register via indirect access */
+function spmp_read_addr_indirect(entry_idx: range(0, 4095)) -> xlenbits = {
+  if spmpCheckEntryAccess(entry_idx, cur_privilege) then {
+    let hw_idx = spmpSwToHwIndex(entry_idx);
+    if hw_idx < 64 then {
+      let old_siselect = read_CSR(0x150);
+      let _ = write_CSR(0x150, zero_extend(to_bits(12, entry_idx)));
+      let result = read_CSR(0x151);
+      let _ = write_CSR(0x150, old_siselect);
+      result
+    } else {
+      
+      zeros()
+    }
+  } else {
+    
+    zeros()
+  }
+}
+
+/* Enhanced SPMP configuration read with range checking */
+function spmp_read_cfg_indirect(entry_idx: range(0, 4095)) -> Spmpcfg_ent = {
+  if spmpCheckEntryAccess(entry_idx, cur_privilege) then {
+    let hw_idx = spmpSwToHwIndex(entry_idx);
+    if hw_idx < 64 then {
+      let old_siselect = read_CSR(0x150);
+      let _ = write_CSR(0x150, zero_extend(to_bits(12, entry_idx)));
+      let result = read_CSR(0x152);
+      let _ = write_CSR(0x150, old_siselect);
+      Mk_Spmpcfg_ent(result[7..0])
+    } else {
+      Mk_Spmpcfg_ent(0x00)
+    }
+  } else {
+    Mk_Spmpcfg_ent(0x00)
+  }
 }
 
 /* Write SPMP address register via indirect access */
-function spmp_write_addr_indirect(entry_idx: nat, value: xlenbits) -> unit = {
-  if entry_idx < 64 then {
-    let old_siselect = read_CSR(0x150);
-    let _ = write_CSR(0x150, zero_extend(to_bits(12, entry_idx)));
-    let _ = write_CSR(0x151, value);  // Write sireg (spmpaddr[entry_idx])
-    let _ = write_CSR(0x150, old_siselect);
+function spmp_write_addr_indirect(entry_idx: range(0, 4095), value: xlenbits) -> unit = {
+  if spmpCheckEntryAccess(entry_idx, cur_privilege) then {
+    let hw_idx = spmpSwToHwIndex(entry_idx);
+    if hw_idx < 64 then {
+      let old_siselect = read_CSR(0x150);
+      let _ = write_CSR(0x150, zero_extend(to_bits(12, entry_idx)));
+      let _ = write_CSR(0x151, value);
+      let _ = write_CSR(0x150, old_siselect);
+    } 
+
   }
 }
 
 /* Write SPMP configuration register via indirect access */
-function spmp_write_cfg_indirect(entry_idx: nat, cfg: Spmpcfg_ent) -> unit = {
-  if entry_idx < 64 then {
-    let old_siselect = read_CSR(0x150);
-    let _ = write_CSR(0x150, zero_extend(to_bits(12, entry_idx)));
-    let _ = write_CSR(0x152, zero_extend(cfg.bits));  // Write sireg2 (spmpcfg[entry_idx])
-    let _ = write_CSR(0x150, old_siselect);
+function spmp_write_cfg_indirect(entry_idx: range(0, 4095), cfg: Spmpcfg_ent) -> unit = {
+  if spmpCheckEntryAccess(entry_idx, cur_privilege) then {
+    let hw_idx = spmpSwToHwIndex(entry_idx);
+    if hw_idx < 64 then {
+      let old_siselect = read_CSR(0x150);
+      let _ = write_CSR(0x150, zero_extend(to_bits(12, entry_idx)));
+      let _ = write_CSR(0x152, zero_extend(cfg.bits));
+      let _ = write_CSR(0x150, old_siselect);
+    }
   }
 }
 
-/* M-mode versions for L bit control */
-function spmp_mmode_write_cfg_indirect(entry_idx: nat, cfg: Spmpcfg_ent) -> unit = {
-  if entry_idx < 64 then {
-    let old_miselect = read_CSR(0x350);
-    let _ = write_CSR(0x350, zero_extend(to_bits(12, entry_idx)));
-    let _ = write_CSR(0x352, zero_extend(cfg.bits));  // Write mireg2 (spmpcfg[entry_idx])
-    let _ = write_CSR(0x350, old_miselect);
+/* M-mode version with same range checking for consistency */
+function spmp_mmode_write_cfg_indirect(entry_idx: range(0, 4095), cfg: Spmpcfg_ent) -> unit = {
+  if spmpCheckEntryAccess(entry_idx, Machine) then {
+    let hw_idx = spmpSwToHwIndex(entry_idx);
+    if hw_idx < 64 then {
+      let old_miselect = read_CSR(0x350);
+      let _ = write_CSR(0x350, zero_extend(to_bits(12, entry_idx)));
+      let _ = write_CSR(0x352, zero_extend(cfg.bits));
+      let _ = write_CSR(0x350, old_miselect);
+    }
+  }
+}
+
+/* M-mode configuration register read via miselect interface */
+function spmp_mmode_read_cfg_indirect(entry_idx: range(0, 4095)) -> Spmpcfg_ent = {
+  if spmpCheckEntryAccess(entry_idx, Machine) then {
+    let hw_idx = spmpSwToHwIndex(entry_idx);
+    if hw_idx < 64 then {
+      let old_miselect = read_CSR(0x350);
+      let _ = write_CSR(0x350, zero_extend(to_bits(12, entry_idx)));
+      let result = read_CSR(0x352);  // mireg2 (0x352) for configuration access
+      let _ = write_CSR(0x350, old_miselect);
+      Mk_Spmpcfg_ent(result[7..0])
+    } else {
+      
+      Mk_Spmpcfg_ent(0x00)
+    }
+  } else {
+    
+    Mk_Spmpcfg_ent(0x00)
+  }
+}
+
+/* M-mode address register write via miselect interface */
+function spmp_mmode_write_addr_indirect(entry_idx: range(0, 4095), value: xlenbits) -> unit = {
+  if spmpCheckEntryAccess(entry_idx, Machine) then {
+    let hw_idx = spmpSwToHwIndex(entry_idx);
+    if hw_idx < 64 then {
+      let old_miselect = read_CSR(0x350);
+      let _ = write_CSR(0x350, zero_extend(to_bits(12, entry_idx)));
+      let _ = write_CSR(0x351, value);  // mireg (0x351) for address access
+      let _ = write_CSR(0x350, old_miselect);
+    }
+  }
+}
+
+/* M-mode address register read via miselect interface */
+function spmp_mmode_read_addr_indirect(entry_idx: range(0, 4095)) -> xlenbits = {
+  if spmpCheckEntryAccess(entry_idx, Machine) then {
+    let hw_idx = spmpSwToHwIndex(entry_idx);
+    if hw_idx < 64 then {
+      let old_miselect = read_CSR(0x350);
+      let _ = write_CSR(0x350, zero_extend(to_bits(12, entry_idx)));
+      let result = read_CSR(0x351);  // mireg (0x351) for address access
+      let _ = write_CSR(0x350, old_miselect);
+      result
+    } else {
+      
+      zeros()
+    }
+  } else {
+    
+    zeros()
   }
 }
 
@@ -362,8 +456,17 @@ function spmpWriteCfg(n: range(0, 63), cfg: Spmpcfg_ent, v: bits(8), priv: Privi
     // Preserve reserved bit[5] (WPRI) and allow modification of other fields  
     let new_cfg = Mk_Spmpcfg_ent((v & 0xDF) | (cfg.bits & 0x20));
     
-    // L bit access control: Only M-mode can modify L bit
-    let new_cfg = if not(is_machine_mode) then [new_cfg with L = cfg[L]] else new_cfg;
+    // L bit access control: 
+    // - M-mode: Can freely modify L bit (0→1 or 1→0)
+    // - S-mode: Can only set L bit (0→1), cannot clear it (1→0)
+    let new_cfg = if not(is_machine_mode) then {
+      // S-mode can only set L bit, not clear it
+      let current_L = cfg[L];
+      let requested_L = new_cfg[L];
+      // Allow 0→1 transition, deny 1→0 transition
+      let final_L = if current_L == 0b1 then 0b1 else requested_L;
+      [new_cfg with L = final_L]
+    } else new_cfg;
 
     // "The R, W, and X fields form a collective WARL field for which the combinations with R=0 and W=1 are reserved."
     // In this implementation if R=0 and W=1 then R, W and X are all set to 0.
@@ -445,8 +548,37 @@ function spmpWriteAddrReg(n : range(0, 63), v : xlenbits) -> unit = {
 function clause is_CSR_defined(0x1F0) = sys_spmp_enabled
 function clause read_CSR(0x1F0) = spmpswitch
 function clause write_CSR(0x1F0, value) = {
-  // spmpswitch register can be written by both M-mode and S-mode
-  spmpswitch = value;
+  if cur_privilege == Machine then {
+    // M-mode can modify all switch bits
+    spmpswitch = value;
+  } else {
+    // S-mode cannot modify switch bits for locked entries
+    let current_switch = spmpswitch;
+    var new_switch = current_switch;
+    
+    // Check each bit individually for RV64
+    if xlen == 64 then {
+      foreach (i from 0 to 63) {
+        let cfg = spmp_read_cfg_indirect(i);
+        if not(spmpLocked(cfg)) then {
+          // Only modify non-locked entries
+          let new_bit = value[i];
+          new_switch = [new_switch with i = new_bit];
+        }
+      }
+    } else {
+      // RV32: Only check bits 0-31 for spmpswitch
+      foreach (i from 0 to 31) {
+        let cfg = spmp_read_cfg_indirect(i);
+        if not(spmpLocked(cfg)) then {
+          let new_bit = value[i];
+          new_switch = [new_switch with i = new_bit];
+        }
+      }
+    };
+    
+    spmpswitch = new_switch;
+  };
   spmpswitch
 }
 
