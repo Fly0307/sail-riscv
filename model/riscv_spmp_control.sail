@@ -353,7 +353,7 @@ function accessToSpmpFault(acc : AccessType(ext_access_type)) -> ExceptionType =
  * main SPMP checking loop. The parameter i is a hardware index (pmpnum to 63). */
 function spmpGetEntry(i: nat) -> (Spmpcfg_ent, xlenbits) = {
   if i < 64 then (spmp_read_cfg_indirect(i), spmp_read_addr_indirect(i))
-  else (Mk_Spmpcfg_ent(0x00), zeros())  // fallback case
+  else (Mk_Spmpcfg_ent(0x0000), zeros())  // fallback case
 }
 
 /* SPMP Context Switch Optimization Helper Functions */
@@ -570,7 +570,7 @@ function reset_spmp() -> unit = {
   foreach (hw_idx from spmp_start to 63) {
     // On reset the SPMP register's A field is set to OFF (disabled) and L bit is cleared.
     // This is the only way to clear L bits after they have been set.
-    let reset_cfg = Mk_Spmpcfg_ent(0x00);  // All bits cleared
+    let reset_cfg = Mk_Spmpcfg_ent(0x0000);  // All bits cleared
     spmp_mmode_write_cfg_indirect(hw_idx, reset_cfg);
     spmp_write_addr_indirect(hw_idx, zeros());
   };

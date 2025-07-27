@@ -200,13 +200,18 @@ function spmpAddrMatchType_to_bits(bs) = {
   }
 }
 
-bitfield Spmpcfg_ent : bits(8) = {
-  L : 7,        /* Lock bit - prevents further modifications when set ( Section 2.2) */
-  S : 6,        /* S-mode/U-mode shared permission management ( Section 2.3) */
-              /* bit[5]: Reserved (WPRI - Write Preserve, Read Ignore) */
-  A : 4 .. 3,   /* Address matching mode (OFF/TOR/NA4/NAPOT) ( Section 2.2) */
+bitfield Spmpcfg_ent : bits(16) = {
+  /* Bits 15-10: Reserved for future use */
+  
+  SHARED : 9,   /* SHARED bit - marks a Shared-Region rule (WARL) */
+  U : 8,        /* U bit - marks U-mode-only when set, S-mode-only when unset (WARL) */
+  L : 7,        /* Lock bit - prevents further modifications when set (WARL) */
+  
+  /* Bits 6-5: Reserved for future use */
+  
+  A : 4 .. 3,   /* Address matching mode (OFF/TOR/NA4/NAPOT) (WARL) */
 
-  /* Memory access permissions ( Section 2.2) */
+  /* Memory access permissions (WARL) */
   X : 2,        /* Execute permission */
   W : 1,        /* Write permission */
   R : 0         /* Read permission */
@@ -277,12 +282,12 @@ function spmp_read_cfg_indirect(entry_idx: range(0, 4095)) -> Spmpcfg_ent = {
       let _ = write_CSR(0x150, zero_extend(to_bits(12, entry_idx)));
       let result = read_CSR(0x152);
       let _ = write_CSR(0x150, old_siselect);
-      Mk_Spmpcfg_ent(result[7..0])
+      Mk_Spmpcfg_ent(result[15..0])  // Read 16 bits for SPMP config
     } else {
-      Mk_Spmpcfg_ent(0x00)
+      Mk_Spmpcfg_ent(0x0000)  // 16-bit zero
     }
   } else {
-    Mk_Spmpcfg_ent(0x00)
+    Mk_Spmpcfg_ent(0x0000)  // 16-bit zero
   }
 }
 
@@ -334,12 +339,12 @@ function spmp_mmode_read_cfg_indirect(entry_idx: range(0, 4095)) -> Spmpcfg_ent 
       let _ = write_CSR(0x350, zero_extend(to_bits(12, entry_idx)));
       let result = read_CSR(0x352);  // mireg2 (0x352) for configuration access
       let _ = write_CSR(0x350, old_miselect);
-      Mk_Spmpcfg_ent(result[7..0])
+      Mk_Spmpcfg_ent(result[15..0])  // Read 16 bits for SPMP config
     } else {
-      Mk_Spmpcfg_ent(0x00)
+      Mk_Spmpcfg_ent(0x0000)  // 16-bit zero
     }
   } else {
-    Mk_Spmpcfg_ent(0x00)
+    Mk_Spmpcfg_ent(0x0000)  // 16-bit zero
   }
 }
 
@@ -383,15 +388,12 @@ function spmpReadCfgReg(n : range(0, 15)) -> xlenbits = {
   let spmp_start = getPmpNum();  // First SPMP hardware index
   if xlen == 32
   then {
-    let base_idx = n * 4;
+    // RV32: Each register contains 2 entries (16 bits each)
+    let base_idx = n * 2;
     let hw_idx0 = spmp_start + base_idx + 0;
     let hw_idx1 = spmp_start + base_idx + 1;
-    let hw_idx2 = spmp_start + base_idx + 2;
-    let hw_idx3 = spmp_start + base_idx + 3;
     // Ensure indices are within bounds
-    if hw_idx3 < 64 & hw_idx2 < 64 & hw_idx1 < 64 & hw_idx0 < 64 then {
-      spmp_read_cfg_indirect(hw_idx3).bits @
-      spmp_read_cfg_indirect(hw_idx2).bits @
+    if hw_idx1 < 64 & hw_idx0 < 64 then {
       spmp_read_cfg_indirect(hw_idx1).bits @
       spmp_read_cfg_indirect(hw_idx0).bits
     } else {
@@ -399,23 +401,15 @@ function spmpReadCfgReg(n : range(0, 15)) -> xlenbits = {
     }
   }
   else {
+    // RV64: Each register contains 4 entries (16 bits each)
     assert(n % 2 == 0, "Unexpected spmp config reg read");
-    let base_idx = n * 4;
+    let base_idx = n * 2;  // Adjusted for 16-bit entries
     let hw_idx0 = spmp_start + base_idx + 0;
     let hw_idx1 = spmp_start + base_idx + 1;
     let hw_idx2 = spmp_start + base_idx + 2;
     let hw_idx3 = spmp_start + base_idx + 3;
-    let hw_idx4 = spmp_start + base_idx + 4;
-    let hw_idx5 = spmp_start + base_idx + 5;
-    let hw_idx6 = spmp_start + base_idx + 6;
-    let hw_idx7 = spmp_start + base_idx + 7;
     // Ensure indices are within bounds
-    if hw_idx7 < 64 & hw_idx6 < 64 & hw_idx5 < 64 & hw_idx4 < 64 & 
-       hw_idx3 < 64 & hw_idx2 < 64 & hw_idx1 < 64 & hw_idx0 < 64 then {
-      spmp_read_cfg_indirect(hw_idx7).bits @
-      spmp_read_cfg_indirect(hw_idx6).bits @
-      spmp_read_cfg_indirect(hw_idx5).bits @
-      spmp_read_cfg_indirect(hw_idx4).bits @
+    if hw_idx3 < 64 & hw_idx2 < 64 & hw_idx1 < 64 & hw_idx0 < 64 then {
       spmp_read_cfg_indirect(hw_idx3).bits @
       spmp_read_cfg_indirect(hw_idx2).bits @
       spmp_read_cfg_indirect(hw_idx1).bits @
@@ -440,7 +434,7 @@ function spmpTORLocked(cfg: Spmpcfg_ent) -> bool =
  * - S-mode: Cannot modify locked entries (writes are ignored when L=1)
  * - The L bit is only accessible to M-mode for writes
  */
-function spmpWriteCfg(n: range(0, 63), cfg: Spmpcfg_ent, v: bits(8), priv: Privilege) -> Spmpcfg_ent = {
+function spmpWriteCfg(n: range(0, 63), cfg: Spmpcfg_ent, v: bits(16), priv: Privilege) -> Spmpcfg_ent = {
   // Check if entry is locked and current privilege
   let is_locked = spmpLocked(cfg);
   let is_machine_mode = (priv == Machine);
@@ -449,8 +443,10 @@ function spmpWriteCfg(n: range(0, 63), cfg: Spmpcfg_ent, v: bits(8), priv: Privi
   if is_locked & not(is_machine_mode) then cfg
   else {
     // Create new configuration from input value
-    // Preserve reserved bit[5] (WPRI) and allow modification of other fields  
-    let new_cfg = Mk_Spmpcfg_ent((v & 0xDF) | (cfg.bits & 0x20));
+    // Preserve reserved bits [15:10], [6:5] (WPRI) and allow modification of other fields  
+    let reserved_mask = 0xFC60;  // bits 15:10 and 6:5
+    let writable_mask = 0x039F;  // bits 9:7 and 4:0
+    let new_cfg = Mk_Spmpcfg_ent((v & writable_mask) | (cfg.bits & reserved_mask));
     
     // L bit access control: 
     // - M-mode: Can freely modify L bit (0→1 or 1→0)
@@ -477,22 +473,24 @@ function spmpWriteCfgReg(n : range(0, 15), v : xlenbits) -> unit = {
   let spmp_start = getPmpNum();  // First SPMP hardware index
   if xlen == 32
   then {
-    foreach (i from 0 to 3) {
-      let hw_idx = spmp_start + n*4 + i;
+    // RV32: Each register contains 2 entries (16 bits each)
+    foreach (i from 0 to 1) {
+      let hw_idx = spmp_start + n*2 + i;
       if hw_idx < 64 then {
         let current_cfg = spmp_read_cfg_indirect(hw_idx);
-        let new_cfg = spmpWriteCfg(hw_idx, current_cfg, v[8*i+7 .. 8*i], cur_privilege);
+        let new_cfg = spmpWriteCfg(hw_idx, current_cfg, v[16*i+15 .. 16*i], cur_privilege);
         spmp_write_cfg_indirect(hw_idx, new_cfg);
       }
     }
   }
   else {
+    // RV64: Each register contains 4 entries (16 bits each)
     assert(n % 2 == 0, "Unexpected spmp config reg write");
-    foreach (i from 0 to 7) {
-      let hw_idx = spmp_start + n*4 + i;
+    foreach (i from 0 to 3) {
+      let hw_idx = spmp_start + n*2 + i;  // Adjusted for 16-bit entries
       if hw_idx < 64 then {
         let current_cfg = spmp_read_cfg_indirect(hw_idx);
-        let new_cfg = spmpWriteCfg(hw_idx, current_cfg, v[8*i+7 .. 8*i], cur_privilege);
+        let new_cfg = spmpWriteCfg(hw_idx, current_cfg, v[16*i+15 .. 16*i], cur_privilege);
         spmp_write_cfg_indirect(hw_idx, new_cfg);
       }
     }
@@ -523,7 +521,7 @@ function spmpWriteAddrReg(n : range(0, 63), v : xlenbits) -> unit = {
   let priv = cur_privilege;
   
   let current_cfg = spmp_read_cfg_indirect(n);
-  let next_cfg = if n + 1 < 64 then spmp_read_cfg_indirect(n + 1) else Mk_Spmpcfg_ent(0x00);
+  let next_cfg = if n + 1 < 64 then spmp_read_cfg_indirect(n + 1) else Mk_Spmpcfg_ent(0x0000);
   let current_addr = spmp_read_addr_indirect(n);
   
   let new_addr = spmpWriteAddr(
