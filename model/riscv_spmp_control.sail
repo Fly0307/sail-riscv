@@ -34,8 +34,9 @@ function spmpAddrRange(cfg: Spmpcfg_ent, spmpaddr: xlenbits, prev_spmpaddr: xlen
      * Matches addresses in range [prev_spmpaddr*4, spmpaddr*4)
      * If prev_spmpaddr >= spmpaddr, no addresses match (invalid range) */
     TOR => {
-      // Special case: For entry 0 with TOR mode, use zero as lower bound
-      let lower_bound = if entry_index == 0 then zeros() else prev_spmpaddr;
+      // Special case: For first SPMP entry (hw_idx == getPmpNum()) with TOR mode, use zero as lower bound
+      let spmp_start = getPmpNum();
+      let lower_bound = if entry_index == spmp_start then zeros() else prev_spmpaddr;
       if lower_bound >=_u spmpaddr
       then None()
       else Some((lower_bound << 2, spmpaddr << 2))
@@ -342,14 +343,14 @@ function accessToSpmpFault(acc : AccessType(ext_access_type)) -> ExceptionType =
 /*  of entries as PMP for consistency.                                                  */
 /*=======================================================================================*/
 
-/* Retrieve SPMP configuration and address register pair for entry i.
+/* Retrieve SPMP configuration and address register pair for hardware entry i.
  * 
  * SPMP supports 64 entries (0-63) same as PMP, each with:
  *   - One configuration entry (8 bits in spmpcfg registers)
  *   - One address register (spmpaddr registers)
  * 
  * This function provides unified access across all entries for the
- * main SPMP checking loop. */
+ * main SPMP checking loop. The parameter i is a hardware index (pmpnum to 63). */
 function spmpGetEntry(i: nat) -> (Spmpcfg_ent, xlenbits) = {
   if i < 64 then (spmp_read_cfg_indirect(i), spmp_read_addr_indirect(i))
   else (Mk_Spmpcfg_ent(0x00), zeros())  // fallback case
@@ -486,28 +487,27 @@ function spmpCheck forall 'n, 0 < 'n <= max_mem_access . (
   };
   
   /* Check all SPMP entries in order for address matching.
-   * Only check hardware resources allocated to SPMP (from getPmpNum() to 63) */
+   * SPMP entries begin from hardware index pmpnum and go to 63 */
   var has_delegated_entries : bool = false;  // Track if any SPMP entries are delegated
   let spmp_start = getPmpNum();  // First hardware resource allocated to SPMP
-  let spmp_count = getSpmpEntryCount();  // Number of SPMP entries available
+  let spmp_end = 63;             // Last hardware resource (always 63)
   
   var prev_spmpaddr : xlenbits = zeros();  // Previous address for TOR mode
   
-  foreach (sw_idx from 0 to (spmp_count - 1)) {
-    let hw_idx = spmpSwToHwIndex(sw_idx);  // Convert to hardware index
+  foreach (hw_idx from spmp_start to spmp_end) {
+    /* Get current entry configuration and address using hardware index */
+    let (cfg, spmpaddr) = spmpGetEntry(hw_idx);
     
-    /* Get current entry configuration and address using helper function */
-    let (cfg, spmpaddr) = spmpGetEntry(sw_idx);
-    
-    /* For TOR mode: sw_idx=0 uses 0 as lower bound, others use previous entry */
-    let current_prev_addr = if sw_idx == 0 then zeros() else prev_spmpaddr;
+    /* For TOR mode: first SPMP entry (hw_idx == spmp_start) uses 0 as lower bound, 
+     * others use previous entry */
+    let current_prev_addr = if hw_idx == spmp_start then zeros() else prev_spmpaddr;
     
     /* Check if this entry is delegated (enabled/configured) */
     let is_delegated = spmpAddrMatchType_of_bits(cfg[A]) != OFF;
     has_delegated_entries = has_delegated_entries | is_delegated;
     
     /* Check if entry is active - use spmpEntryActive function with hardware index and config */
-    let is_active = if is_delegated & hw_idx < 64 then {
+    let is_active = if is_delegated then {
       spmpEntryActive(hw_idx, cfg)  // Use helper function with hardware index and config
     } else false;
     
@@ -517,7 +517,7 @@ function spmpCheck forall 'n, 0 < 'n <= max_mem_access . (
       let Physaddr(addr_bits) = addr;
       let addr_nat = unsigned(addr_bits);
       let width_nat = unsigned(width);
-      let rng = spmpAddrRange(cfg, spmpaddr, current_prev_addr, sw_idx);
+      let rng = spmpAddrRange(cfg, spmpaddr, current_prev_addr, hw_idx);
       
       match spmpMatchAddr(addr_nat, width_nat, rng) {
         SPMP_NoMatch      => (),  // Continue to next entry

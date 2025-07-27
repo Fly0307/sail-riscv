@@ -241,7 +241,7 @@ function getSpmpValidRange() -> (nat, nat) = {
   let spmp_count = total_resources - pmp_count;  
   // Ensure we don't return negative values for nat type
   if spmp_count <= 0 then (0, 0)
-  else (0, spmp_count - 1)               // [0, spmp_count-1]
+  else (spmp_start, total_resources - 1) // [pmpnum, 63] - hardware indices
 }
 
 /* Check if SPMP entry index is valid for current privilege */
@@ -253,19 +253,17 @@ function spmpCheckEntryAccess(entry_idx: range(0, 4095), priv: Privilege) -> boo
 /* Read SPMP address register via indirect access */
 function spmp_read_addr_indirect(entry_idx: range(0, 4095)) -> xlenbits = {
   if spmpCheckEntryAccess(entry_idx, cur_privilege) then {
-    let hw_idx = spmpSwToHwIndex(entry_idx);
-    if hw_idx < 64 then {
+    // entry_idx is a hardware index (pmpnum to 63)
+    if entry_idx < 64 then {
       let old_siselect = read_CSR(0x150);
       let _ = write_CSR(0x150, zero_extend(to_bits(12, entry_idx)));
       let result = read_CSR(0x151);
       let _ = write_CSR(0x150, old_siselect);
       result
     } else {
-      
       zeros()
     }
   } else {
-    
     zeros()
   }
 }
@@ -273,8 +271,8 @@ function spmp_read_addr_indirect(entry_idx: range(0, 4095)) -> xlenbits = {
 /* Enhanced SPMP configuration read with range checking */
 function spmp_read_cfg_indirect(entry_idx: range(0, 4095)) -> Spmpcfg_ent = {
   if spmpCheckEntryAccess(entry_idx, cur_privilege) then {
-    let hw_idx = spmpSwToHwIndex(entry_idx);
-    if hw_idx < 64 then {
+    // entry_idx is a hardware index (pmpnum to 63)
+    if entry_idx < 64 then {
       let old_siselect = read_CSR(0x150);
       let _ = write_CSR(0x150, zero_extend(to_bits(12, entry_idx)));
       let result = read_CSR(0x152);
@@ -291,22 +289,21 @@ function spmp_read_cfg_indirect(entry_idx: range(0, 4095)) -> Spmpcfg_ent = {
 /* Write SPMP address register via indirect access */
 function spmp_write_addr_indirect(entry_idx: range(0, 4095), value: xlenbits) -> unit = {
   if spmpCheckEntryAccess(entry_idx, cur_privilege) then {
-    let hw_idx = spmpSwToHwIndex(entry_idx);
-    if hw_idx < 64 then {
+    // entry_idx is a hardware index (pmpnum to 63)
+    if entry_idx < 64 then {
       let old_siselect = read_CSR(0x150);
       let _ = write_CSR(0x150, zero_extend(to_bits(12, entry_idx)));
       let _ = write_CSR(0x151, value);
       let _ = write_CSR(0x150, old_siselect);
-    } 
-
+    }
   }
 }
 
 /* Write SPMP configuration register via indirect access */
 function spmp_write_cfg_indirect(entry_idx: range(0, 4095), cfg: Spmpcfg_ent) -> unit = {
   if spmpCheckEntryAccess(entry_idx, cur_privilege) then {
-    let hw_idx = spmpSwToHwIndex(entry_idx);
-    if hw_idx < 64 then {
+    // entry_idx is a hardware index (pmpnum to 63)
+    if entry_idx < 64 then {
       let old_siselect = read_CSR(0x150);
       let _ = write_CSR(0x150, zero_extend(to_bits(12, entry_idx)));
       let _ = write_CSR(0x152, zero_extend(cfg.bits));
@@ -318,8 +315,8 @@ function spmp_write_cfg_indirect(entry_idx: range(0, 4095), cfg: Spmpcfg_ent) ->
 /* M-mode version with same range checking for consistency */
 function spmp_mmode_write_cfg_indirect(entry_idx: range(0, 4095), cfg: Spmpcfg_ent) -> unit = {
   if spmpCheckEntryAccess(entry_idx, Machine) then {
-    let hw_idx = spmpSwToHwIndex(entry_idx);
-    if hw_idx < 64 then {
+    // entry_idx is a hardware index (pmpnum to 63)
+    if entry_idx < 64 then {
       let old_miselect = read_CSR(0x350);
       let _ = write_CSR(0x350, zero_extend(to_bits(12, entry_idx)));
       let _ = write_CSR(0x352, zero_extend(cfg.bits));
@@ -331,19 +328,17 @@ function spmp_mmode_write_cfg_indirect(entry_idx: range(0, 4095), cfg: Spmpcfg_e
 /* M-mode configuration register read via miselect interface */
 function spmp_mmode_read_cfg_indirect(entry_idx: range(0, 4095)) -> Spmpcfg_ent = {
   if spmpCheckEntryAccess(entry_idx, Machine) then {
-    let hw_idx = spmpSwToHwIndex(entry_idx);
-    if hw_idx < 64 then {
+    // entry_idx is a hardware index (pmpnum to 63)
+    if entry_idx < 64 then {
       let old_miselect = read_CSR(0x350);
       let _ = write_CSR(0x350, zero_extend(to_bits(12, entry_idx)));
       let result = read_CSR(0x352);  // mireg2 (0x352) for configuration access
       let _ = write_CSR(0x350, old_miselect);
       Mk_Spmpcfg_ent(result[7..0])
     } else {
-      
       Mk_Spmpcfg_ent(0x00)
     }
   } else {
-    
     Mk_Spmpcfg_ent(0x00)
   }
 }
@@ -385,13 +380,14 @@ function spmp_mmode_read_addr_indirect(entry_idx: range(0, 4095)) -> xlenbits = 
 /* Packing and unpacking spmpcfg regs for xlen-width accesses */
 
 function spmpReadCfgReg(n : range(0, 15)) -> xlenbits = {
+  let spmp_start = getPmpNum();  // First SPMP hardware index
   if xlen == 32
   then {
     let base_idx = n * 4;
-    let hw_idx0 = spmpSwToHwIndex(base_idx + 0);
-    let hw_idx1 = spmpSwToHwIndex(base_idx + 1);
-    let hw_idx2 = spmpSwToHwIndex(base_idx + 2);
-    let hw_idx3 = spmpSwToHwIndex(base_idx + 3);
+    let hw_idx0 = spmp_start + base_idx + 0;
+    let hw_idx1 = spmp_start + base_idx + 1;
+    let hw_idx2 = spmp_start + base_idx + 2;
+    let hw_idx3 = spmp_start + base_idx + 3;
     // Ensure indices are within bounds
     if hw_idx3 < 64 & hw_idx2 < 64 & hw_idx1 < 64 & hw_idx0 < 64 then {
       spmp_read_cfg_indirect(hw_idx3).bits @
@@ -405,14 +401,14 @@ function spmpReadCfgReg(n : range(0, 15)) -> xlenbits = {
   else {
     assert(n % 2 == 0, "Unexpected spmp config reg read");
     let base_idx = n * 4;
-    let hw_idx0 = spmpSwToHwIndex(base_idx + 0);
-    let hw_idx1 = spmpSwToHwIndex(base_idx + 1);
-    let hw_idx2 = spmpSwToHwIndex(base_idx + 2);
-    let hw_idx3 = spmpSwToHwIndex(base_idx + 3);
-    let hw_idx4 = spmpSwToHwIndex(base_idx + 4);
-    let hw_idx5 = spmpSwToHwIndex(base_idx + 5);
-    let hw_idx6 = spmpSwToHwIndex(base_idx + 6);
-    let hw_idx7 = spmpSwToHwIndex(base_idx + 7);
+    let hw_idx0 = spmp_start + base_idx + 0;
+    let hw_idx1 = spmp_start + base_idx + 1;
+    let hw_idx2 = spmp_start + base_idx + 2;
+    let hw_idx3 = spmp_start + base_idx + 3;
+    let hw_idx4 = spmp_start + base_idx + 4;
+    let hw_idx5 = spmp_start + base_idx + 5;
+    let hw_idx6 = spmp_start + base_idx + 6;
+    let hw_idx7 = spmp_start + base_idx + 7;
     // Ensure indices are within bounds
     if hw_idx7 < 64 & hw_idx6 < 64 & hw_idx5 < 64 & hw_idx4 < 64 & 
        hw_idx3 < 64 & hw_idx2 < 64 & hw_idx1 < 64 & hw_idx0 < 64 then {
@@ -478,11 +474,11 @@ function spmpWriteCfg(n: range(0, 63), cfg: Spmpcfg_ent, v: bits(8), priv: Privi
 }
 
 function spmpWriteCfgReg(n : range(0, 15), v : xlenbits) -> unit = {
+  let spmp_start = getPmpNum();  // First SPMP hardware index
   if xlen == 32
   then {
     foreach (i from 0 to 3) {
-      let sw_idx = n*4 + i;
-      let hw_idx = spmpSwToHwIndex(sw_idx);
+      let hw_idx = spmp_start + n*4 + i;
       if hw_idx < 64 then {
         let current_cfg = spmp_read_cfg_indirect(hw_idx);
         let new_cfg = spmpWriteCfg(hw_idx, current_cfg, v[8*i+7 .. 8*i], cur_privilege);
@@ -493,8 +489,7 @@ function spmpWriteCfgReg(n : range(0, 15), v : xlenbits) -> unit = {
   else {
     assert(n % 2 == 0, "Unexpected spmp config reg write");
     foreach (i from 0 to 7) {
-      let sw_idx = n*4 + i;
-      let hw_idx = spmpSwToHwIndex(sw_idx);
+      let hw_idx = spmp_start + n*4 + i;
       if hw_idx < 64 then {
         let current_cfg = spmp_read_cfg_indirect(hw_idx);
         let new_cfg = spmpWriteCfg(hw_idx, current_cfg, v[8*i+7 .. 8*i], cur_privilege);
@@ -617,9 +612,9 @@ function spmpSwitchReset() -> unit = {
 // spmpcfgN - REMOVED (now accessed via siselect/sireg2)
 function clause is_CSR_defined(0x1A) @ idx : bits(4) = {
   let cfg_idx = unsigned(idx);
-  let spmp_entries = getSpmpEntryCount();
-  let first_entry = cfg_idx * (if xlen == 32 then 4 else 8);
-  sys_spmp_enabled & (idx[0] == bitzero | xlen == 32) & (first_entry < spmp_entries)
+  let spmp_start = getPmpNum();  // First SPMP hardware index
+  let first_entry = spmp_start + cfg_idx * (if xlen == 32 then 4 else 8);
+  sys_spmp_enabled & (idx[0] == bitzero | xlen == 32) & (first_entry < 64)
 }
 function clause read_CSR(0x1A @ idx : bits(4) if idx[0] == bitzero | xlen == 32) = spmpReadCfgReg(unsigned(idx))
 function clause write_CSR((0x1A @ idx : bits(4), value) if idx[0] == bitzero | xlen == 32) = {
@@ -630,46 +625,50 @@ function clause write_CSR((0x1A @ idx : bits(4), value) if idx[0] == bitzero | x
 
 // spmpaddrN - REMOVED (now accessed via siselect/sireg)
 function clause is_CSR_defined(0x1B) @ idx : bits(4) = {
-  let addr_idx = unsigned(0b00 @ idx);
-  sys_spmp_enabled & (addr_idx < getSpmpEntryCount())
+  let spmp_start = getPmpNum();
+  let addr_idx = spmp_start + unsigned(0b00 @ idx);
+  sys_spmp_enabled & (addr_idx < 64)
 }
 function clause is_CSR_defined(0x1C) @ idx : bits(4) = {
-  let addr_idx = unsigned(0b01 @ idx);
-  sys_spmp_enabled & (addr_idx < getSpmpEntryCount())
+  let spmp_start = getPmpNum();
+  let addr_idx = spmp_start + unsigned(0b01 @ idx);
+  sys_spmp_enabled & (addr_idx < 64)
 }
 function clause is_CSR_defined(0x1D) @ idx : bits(4) = {
-  let addr_idx = unsigned(0b10 @ idx);
-  sys_spmp_enabled & (addr_idx < getSpmpEntryCount())
+  let spmp_start = getPmpNum();
+  let addr_idx = spmp_start + unsigned(0b10 @ idx);
+  sys_spmp_enabled & (addr_idx < 64)
 }
 function clause is_CSR_defined(0x1E) @ idx : bits(4) = {
-  let addr_idx = unsigned(0b11 @ idx);
-  sys_spmp_enabled & (addr_idx < getSpmpEntryCount())
+  let spmp_start = getPmpNum();
+  let addr_idx = spmp_start + unsigned(0b11 @ idx);
+  sys_spmp_enabled & (addr_idx < 64)
 }
 
 function clause read_CSR(0x1B @ idx : bits(4)) = {
-  let sw_idx = unsigned(0b00 @ idx);
-  let hw_idx = spmpSwToHwIndex(sw_idx);
+  let spmp_start = getPmpNum();
+  let hw_idx = spmp_start + unsigned(0b00 @ idx);
   if hw_idx < 64 then spmpaddr_n[hw_idx] else zeros()
 }
 function clause read_CSR(0x1C @ idx : bits(4)) = {
-  let sw_idx = unsigned(0b01 @ idx);
-  let hw_idx = spmpSwToHwIndex(sw_idx);
+  let spmp_start = getPmpNum();
+  let hw_idx = spmp_start + unsigned(0b01 @ idx);
   if hw_idx < 64 then spmpaddr_n[hw_idx] else zeros()
 }
 function clause read_CSR(0x1D @ idx : bits(4)) = {
-  let sw_idx = unsigned(0b10 @ idx);
-  let hw_idx = spmpSwToHwIndex(sw_idx);
+  let spmp_start = getPmpNum();
+  let hw_idx = spmp_start + unsigned(0b10 @ idx);
   if hw_idx < 64 then spmpaddr_n[hw_idx] else zeros()
 }
 function clause read_CSR(0x1E @ idx : bits(4)) = {
-  let sw_idx = unsigned(0b11 @ idx);
-  let hw_idx = spmpSwToHwIndex(sw_idx);
+  let spmp_start = getPmpNum();
+  let hw_idx = spmp_start + unsigned(0b11 @ idx);
   if hw_idx < 64 then spmpaddr_n[hw_idx] else zeros()
 }
 
 function clause write_CSR(0x1B @ idx : bits(4), value) = {
-  let sw_idx = unsigned(0b00 @ idx);
-  let hw_idx = spmpSwToHwIndex(sw_idx);
+  let spmp_start = getPmpNum();
+  let hw_idx = spmp_start + unsigned(0b00 @ idx);
   if hw_idx < 64 then {
     spmpWriteAddrReg(hw_idx, value);
     spmpaddr_n[hw_idx]
@@ -678,8 +677,8 @@ function clause write_CSR(0x1B @ idx : bits(4), value) = {
   }
 }
 function clause write_CSR(0x1C @ idx : bits(4), value) = {
-  let sw_idx = unsigned(0b01 @ idx);
-  let hw_idx = spmpSwToHwIndex(sw_idx);
+  let spmp_start = getPmpNum();
+  let hw_idx = spmp_start + unsigned(0b01 @ idx);
   if hw_idx < 64 then {
     spmpWriteAddrReg(hw_idx, value);
     spmpaddr_n[hw_idx]
@@ -688,8 +687,8 @@ function clause write_CSR(0x1C @ idx : bits(4), value) = {
   }
 }
 function clause write_CSR(0x1D @ idx : bits(4), value) = {
-  let sw_idx = unsigned(0b10 @ idx);
-  let hw_idx = spmpSwToHwIndex(sw_idx);
+  let spmp_start = getPmpNum();
+  let hw_idx = spmp_start + unsigned(0b10 @ idx);
   if hw_idx < 64 then {
     spmpWriteAddrReg(hw_idx, value);
     spmpaddr_n[hw_idx]
@@ -698,8 +697,8 @@ function clause write_CSR(0x1D @ idx : bits(4), value) = {
   }
 }
 function clause write_CSR(0x1E @ idx : bits(4), value) = {
-  let sw_idx = unsigned(0b11 @ idx);
-  let hw_idx = spmpSwToHwIndex(sw_idx);
+  let spmp_start = getPmpNum();
+  let hw_idx = spmp_start + unsigned(0b11 @ idx);
   if hw_idx < 64 then {
     spmpWriteAddrReg(hw_idx, value);
     spmpaddr_n[hw_idx]
