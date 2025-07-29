@@ -91,92 +91,154 @@ function CheckRWX(ent, acc, priv) = {
   }
 }
 
-/* SPMP privilege-aware permission check implementing the new permission matrix.
+/* SPMP privilege-aware permission check implementing the complete permission matrix.
  * 
- * SPMP has three kinds of rules:
- *   1. S-mode-only rules (S=1): Enforced on S-mode, denied on U-mode
- *   2. U-mode-only rules (S=0, RW≠01): Enforced on U-mode, conditional on S-mode
- *   3. Shared-Region rules (RW=01): Enforced on both modes with restrictions
+ * Based on the detailed permission matrix specification, SPMP has three kinds of rules:
+ *   1. S-mode-only rules (SHARED=0, U=0): Enforced on S-mode, denied on U-mode
+ *   2. U-mode-only rules (SHARED=0, U=1): Enforced on U-mode, conditional on S-mode  
+ *   3. Shared-Region rules (SHARED=1): Enforced on both modes (U bit ignored)
  * 
- * Permission encoding:
- *   - S-mode-only (S=1): Standard R/W/X permissions apply to S-mode only
- *   - U-mode-only (S=0, RW≠01): Standard R/W/X permissions apply to U-mode,
- *     S-mode access depends on mstatus.SUM (accessible via sstatus.SUM) for SMAP/SMEP
- *   - Shared-Region (RW=01): Special encoding for shared access between modes
- *   - Reserved (SRWX=1000): Reserved for future standard use
+ * Permission Matrix Implementation:
+ *   - XWR=000: Always Deny (no permissions)
+ *   - XWR=001: Read-only (R=1, W=0, X=0)
+ *   - XWR=010: Reserved (or shadow stack if Zicfiss enabled)
+ *   - XWR=011: Read-only (R=1, W=0, X=0) 
+ *   - XWR=100: Execute-only (R=0, W=0, X=1)
+ *   - XWR=101: Read+Execute (R=1, W=0, X=1)
+ *   - XWR=110: Reserved
+ *   - XWR=111: Read+Write+Execute (R=1, W=1, X=1) - Special handling in Shared-Region U-mode
  */
 val spmpCheckRWX: (Spmpcfg_ent, AccessType(ext_access_type), Privilege) -> bool
 function spmpCheckRWX(ent, acc, priv) = {
   let do_sum : bool = mstatus[SUM] == 0b1;  // Check SUM bit in mstatus (accessible via sstatus)
+  let xwr = ent[X] @ ent[W] @ ent[R];       // Extract XWR field for encoding checks
   
-  /* Check for reserved encoding SRWX=1000 */
-  if ent[S] == 0b1 & ent[R] == 0b0 & ent[W] == 0b0 & ent[X] == 0b0 then false
-  /* Check for Shared-Region encoding RW=01 */
-  else if ent[R] == 0b0 & ent[W] == 0b1 then {
-    /* Shared-Region rule: Both S-mode and U-mode can access with restrictions */
-    match (ent[S], priv, acc) {
-      /* S=0: Data sharing region (not executable) */
-      (0b0, Supervisor, _) => {
-        match acc {
-          Read(_) => true,           // S-mode has RW permission
-          Write(_) => true,
-          ReadWrite(_) => true,
-          InstructionFetch() => false // Not executable
-        }
-      },
-      (0b0, User, _) => {
-        match acc {
-          Read(_) => true,           // U-mode always has R permission
-          Write(_) => ent[X] == 0b1, // U-mode has W permission if X=1
-          ReadWrite(_) => ent[X] == 0b1,
-          InstructionFetch() => false // Not executable
-        }
-      },
-      
-      /* S=1: Code sharing region (not writable) */
-      (0b1, Supervisor, _) => {
-        match acc {
-          Read(_) => true,           // S-mode has RX permission
-          Write(_) => false,         // Not writable
-          ReadWrite(_) => false,
-          InstructionFetch() => true // Executable
-        }
-      },
-      (0b1, User, _) => {
-        match acc {
-          Read(_) => ent[X] == 0b1,  // U-mode has R permission if X=1
-          Write(_) => false,         // Not writable
-          ReadWrite(_) => false,
-          InstructionFetch() => ent[X] == 0b1 // Execute-only if X=0, RX if X=1
-        }
-      },
-      
-      (_, Machine, _) => true,       // Machine mode bypasses restrictions
-      _ => false
-    }
+  /* Always deny XWR=000 regardless of configuration */
+  if xwr == 0b000 then {
+    false
   }
-  /* S-mode-only rule (S=1, RW≠01) */
-  else if ent[S] == 0b1 then {
+  /* Check for reserved encodings: XWR=010 and XWR=110 */
+  else if (xwr == 0b010) | (xwr == 0b110) then {
+    /* XWR=010: Shadow stack region if Zicfiss enabled, else reserved */
+    /* For now, treat as reserved (deny access) */
+    /* TODO: Implement Zicfiss shadow stack support */
+    false
+  }
+  /* Check for Shared-Region rules (SHARED=1) - U bit and SUM bit are ignored */
+  else if ent[SHARED] == 0b1 then {
     match priv {
-      Supervisor => CheckRWX(ent, acc, priv),  // Standard R/W/X permissions for S-mode
-      User => false,                           // Denied on U-mode
-      Machine => true                          // Machine mode bypasses
+      Supervisor => {
+        /* S-mode in Shared-Region: Always "Enforce" - standard R/W/X permissions */
+        match acc {
+          Read(_)            => ent[R] == 0b1,
+          Write(_)           => ent[W] == 0b1,
+          ReadWrite(_)       => ent[R] == 0b1 & ent[W] == 0b1,
+          InstructionFetch() => ent[X] == 0b1,
+        }
+      },
+      User => {
+        /* U-mode in Shared-Region: Special handling */
+        match xwr {
+          0b001 => {  /* XWR=001: Enforce (standard R/W/X) */
+            match acc {
+              Read(_)            => ent[R] == 0b1,
+              Write(_)           => ent[W] == 0b1,
+              ReadWrite(_)       => ent[R] == 0b1 & ent[W] == 0b1,
+              InstructionFetch() => ent[X] == 0b1,
+            }
+          },
+          0b011 => {  /* XWR=011: Read-only in U-mode for Shared-Region */
+            match acc {
+              Read(_)            => ent[R] == 0b1,    // Allow read if R bit set
+              Write(_)           => false,            // Deny write (Read-only)
+              ReadWrite(_)       => false,            // Deny read-write (Read-only)
+              InstructionFetch() => false,            // Deny execute (Read-only)
+            }
+          },
+          0b100 => {  /* XWR=100: Enforce (standard R/W/X) */
+            match acc {
+              Read(_)            => ent[R] == 0b1,
+              Write(_)           => ent[W] == 0b1,
+              ReadWrite(_)       => ent[R] == 0b1 & ent[W] == 0b1,
+              InstructionFetch() => ent[X] == 0b1,
+            }
+          },
+          0b101 => {  /* XWR=101: Enforce (standard R/W/X) */
+            match acc {
+              Read(_)            => ent[R] == 0b1,
+              Write(_)           => ent[W] == 0b1,
+              ReadWrite(_)       => ent[R] == 0b1 & ent[W] == 0b1,
+              InstructionFetch() => ent[X] == 0b1,
+            }
+          },
+          0b111 => {  /* XWR=111: Exec-only in U-mode for Shared-Region */
+            match acc {
+              Read(_)            => false,    // No read in Exec-only
+              Write(_)           => false,    // No write in Exec-only
+              ReadWrite(_)       => false,    // No read/write in Exec-only
+              InstructionFetch() => ent[X] == 0b1,  // Only execute allowed
+            }
+          },
+          _ => {  /* Other XWR values: standard enforcement */
+            match acc {
+              Read(_)            => ent[R] == 0b1,
+              Write(_)           => ent[W] == 0b1,
+              ReadWrite(_)       => ent[R] == 0b1 & ent[W] == 0b1,
+              InstructionFetch() => ent[X] == 0b1,
+            }
+          }
+        }
+      },
+      Machine => true  // Machine mode bypasses
     }
   }
-  /* U-mode-only rule (S=0, RW≠01) */
+  /* S-mode-only rule (SHARED=0, U=0) */
+  else if ent[U] == 0b0 then {
+    match priv {
+      Supervisor => {
+        /* S-mode: Always Enforce - standard R/W/X permissions apply */
+        match acc {
+          Read(_)            => ent[R] == 0b1,
+          Write(_)           => ent[W] == 0b1,
+          ReadWrite(_)       => ent[R] == 0b1 & ent[W] == 0b1,
+          InstructionFetch() => ent[X] == 0b1,
+        }
+      },
+      User => {
+        /* U-mode: Always Deny for S-mode-only rules */
+        false
+      },
+      Machine => true  // Machine mode bypasses
+    }
+  }
+  /* U-mode-only rule (SHARED=0, U=1) */
   else {
     match priv {
-      User => CheckRWX(ent, acc, priv),        // Standard R/W/X permissions for U-mode
       Supervisor => {
-        /* S-mode access to U-mode region depends on mstatus.SUM (sstatus.SUM) */
-        match acc {
-          /* SMEP: S-mode cannot execute from U-mode pages regardless of SUM */
-          InstructionFetch() => false,
-          /* SMAP: S-mode data access depends on SUM bit */
-          _ => do_sum & CheckRWX(ent, acc, priv)
+        /* S-mode: Access depends on SUM bit for SMAP/SMEP */
+        if do_sum then {
+          /* SUM=1: EnforceNoX - R/W allowed but execute denied (SMEP) */
+          match acc {
+            Read(_)            => ent[R] == 0b1,
+            Write(_)           => ent[W] == 0b1,
+            ReadWrite(_)       => ent[R] == 0b1 & ent[W] == 0b1,
+            InstructionFetch() => false  // SMEP: S-mode cannot execute from U-mode pages
+          }
+        } else {
+          /* SUM=0: Deny - S-mode cannot access U-mode-only pages (SMAP) */
+          false
         }
       },
-      Machine => true                          // Machine mode bypasses
+      User => {
+        /* U-mode: Always Enforce - standard R/W/X permissions apply */
+        match acc {
+          Read(_)            => ent[R] == 0b1,
+          Write(_)           => ent[W] == 0b1,
+          ReadWrite(_)       => ent[R] == 0b1 & ent[W] == 0b1,
+          InstructionFetch() => ent[X] == 0b1,
+        }
+      },
+      Machine => true  // Machine mode bypasses
     }
   }
 }
